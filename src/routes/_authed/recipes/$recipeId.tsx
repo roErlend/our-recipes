@@ -32,9 +32,9 @@ function RecipeDetailPage() {
   if (!recipe) {
     return (
       <div className="flex flex-col items-center gap-3 py-16 text-center">
-        <p className="text-stone-600">This recipe could not be found.</p>
+        <p className="text-stone-600">Fant ikke denne oppskriften.</p>
         <Link to="/recipes">
-          <Button variant="secondary">Back to recipes</Button>
+          <Button variant="secondary">Tilbake til oppskrifter</Button>
         </Link>
       </div>
     )
@@ -59,7 +59,7 @@ function RecipeDetailPage() {
         className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800"
       >
         <ChevronLeft className="h-4 w-4" />
-        Back to recipes
+        Tilbake til oppskrifter
       </Link>
 
       <header className="flex flex-col gap-4">
@@ -76,7 +76,7 @@ function RecipeDetailPage() {
             <Link to="/recipes/$recipeId/edit" params={{ recipeId: recipe.id }}>
               <Button variant="secondary" size="sm">
                 <Pencil className="h-4 w-4" />
-                Edit
+                Rediger
               </Button>
             </Link>
             {confirmingDelete ? (
@@ -87,7 +87,7 @@ function RecipeDetailPage() {
                 onPress={handleDelete}
               >
                 <Trash2 className="h-4 w-4" />
-                {deleting ? 'Deleting…' : 'Confirm delete'}
+                {deleting ? 'Sletter…' : 'Bekreft sletting'}
               </Button>
             ) : (
               <Button
@@ -96,7 +96,7 @@ function RecipeDetailPage() {
                 onPress={() => setConfirmingDelete(true)}
               >
                 <Trash2 className="h-4 w-4" />
-                Delete
+                Slett
               </Button>
             )}
           </div>
@@ -105,13 +105,13 @@ function RecipeDetailPage() {
         <div className="flex flex-wrap items-center gap-3">
           <label className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 shadow-sm">
             <Checkbox isSelected={recipe.isActive} onChange={toggleActive}>
-              Active this week
+              Aktiv denne uken
             </Checkbox>
           </label>
           {recipe.servings != null && (
             <span className="inline-flex items-center gap-1.5 text-sm text-stone-600">
               <Users className="h-4 w-4 text-stone-400" />
-              Serves {recipe.servings}
+              {recipe.servings} porsjoner
             </span>
           )}
           {recipe.sourceUrl && (
@@ -122,7 +122,7 @@ function RecipeDetailPage() {
               className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline"
             >
               <ExternalLink className="h-4 w-4" />
-              View original recipe
+              Se original oppskrift
             </a>
           )}
         </div>
@@ -159,7 +159,7 @@ function RecipeDetailPage() {
         {recipe.ingredients.length > 0 && (
           <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <h2 className="mb-3 text-lg font-semibold text-stone-900">
-              Ingredients
+              Ingredienser
             </h2>
             <ul className="flex flex-col gap-2">
               {recipe.ingredients.map((ing) => {
@@ -188,7 +188,7 @@ function RecipeDetailPage() {
         {recipe.instructions ? (
           <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <h2 className="mb-3 text-lg font-semibold text-stone-900">
-              Instructions
+              Fremgangsmåte
             </h2>
             <div className="prose prose-stone max-w-none whitespace-pre-wrap text-stone-700">
               {recipe.instructions}
@@ -197,8 +197,8 @@ function RecipeDetailPage() {
         ) : (
           !recipe.ingredients.length && (
             <section className="rounded-2xl border border-dashed border-stone-300 bg-white/50 p-8 text-center text-stone-500">
-              This is a linked recipe — open the original above for the full
-              method.
+              Dette er en lenket oppskrift – åpne originalen ovenfor for hele
+              fremgangsmåten.
             </section>
           )
         )}

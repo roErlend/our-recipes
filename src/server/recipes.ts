@@ -9,16 +9,21 @@ import { requireUser } from '@/server/auth'
 /* ----------------------------- validation ------------------------------ */
 
 const ingredientInput = z.object({
-  name: z.string().trim().min(1, 'Ingredient name is required'),
+  name: z.string().trim().min(1, 'Ingrediensnavn er påkrevd'),
   quantity: z.number().positive().nullable().optional(),
   unit: z.string().trim().max(40).nullable().optional(),
   note: z.string().trim().max(200).nullable().optional(),
 })
 
 const recipeInput = z.object({
-  title: z.string().trim().min(1, 'Title is required').max(200),
+  title: z.string().trim().min(1, 'Tittel er påkrevd').max(200),
   description: z.string().trim().max(2000).nullable().optional(),
-  sourceUrl: z.string().trim().url('Must be a valid URL').nullable().optional(),
+  sourceUrl: z
+    .string()
+    .trim()
+    .url('Må være en gyldig URL')
+    .nullable()
+    .optional(),
   imageUrl: z.string().trim().url().nullable().optional(),
   instructions: z.string().trim().max(20000).nullable().optional(),
   servings: z.number().int().positive().max(100).nullable().optional(),

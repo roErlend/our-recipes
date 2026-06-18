@@ -49,11 +49,12 @@ function ShoppingPage() {
           <ShoppingCart className="h-6 w-6" />
         </div>
         <p className="max-w-sm text-stone-600">
-          No recipes are marked active this week. Mark a few recipes as{' '}
-          <strong>active</strong> and they'll turn into a shopping list here.
+          Ingen oppskrifter er merket som aktive denne uken. Merk noen
+          oppskrifter som <strong>aktive</strong>, så blir de til en handleliste
+          her.
         </p>
         <Link to="/recipes">
-          <Button>Browse recipes</Button>
+          <Button>Se oppskrifter</Button>
         </Link>
       </div>
     )
@@ -63,15 +64,16 @@ function ShoppingPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">Shopping list</h1>
+          <h1 className="text-2xl font-bold text-stone-900">Handleliste</h1>
           <p className="text-sm text-stone-500">
-            {remaining} item{remaining === 1 ? '' : 's'} left · from{' '}
-            {recipes.length} active recipe{recipes.length === 1 ? '' : 's'}
+            {remaining} {remaining === 1 ? 'vare' : 'varer'} igjen · fra{' '}
+            {recipes.length}{' '}
+            {recipes.length === 1 ? 'aktiv oppskrift' : 'aktive oppskrifter'}
           </p>
         </div>
         <Button variant="secondary" size="sm" onPress={reset}>
           <RotateCcw className="h-4 w-4" />
-          Reset ticks
+          Nullstill avhuking
         </Button>
       </div>
 
@@ -88,7 +90,7 @@ function ShoppingPage() {
 
       {items.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-stone-300 bg-white/50 py-12 text-center text-stone-500">
-          Your active recipes don't list any ingredients yet.
+          De aktive oppskriftene dine har ingen ingredienser ennå.
         </p>
       ) : (
         <ul className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
@@ -102,7 +104,7 @@ function ShoppingPage() {
                 <Checkbox
                   isSelected={item.checked}
                   onChange={(checked) => toggle(item.key, checked)}
-                  aria-label={`Mark ${item.name} as bought`}
+                  aria-label={`Merk ${item.name} som kjøpt`}
                 />
                 <div className="flex-1">
                   <span

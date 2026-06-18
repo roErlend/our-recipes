@@ -46,7 +46,7 @@ function LoginPage() {
     setPending(false)
 
     if (result.error) {
-      setError(result.error.message ?? 'Something went wrong')
+      setError(result.error.message ?? 'Noe gikk galt')
       return
     }
 
@@ -61,11 +61,13 @@ function LoginPage() {
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white">
             <UtensilsCrossed className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-bold text-stone-900">Our Recipes</h1>
+          <h1 className="text-2xl font-bold text-stone-900">
+            Våre oppskrifter
+          </h1>
           <p className="mt-1 text-sm text-stone-500">
             {mode === 'signin'
-              ? 'Sign in to your shared recipe book'
-              : 'Create an account to get started'}
+              ? 'Logg inn på deres felles oppskriftsbok'
+              : 'Opprett en konto for å komme i gang'}
           </p>
         </div>
 
@@ -74,20 +76,20 @@ function LoginPage() {
           className="flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm"
         >
           {mode === 'signup' && (
-            <TextField name="name" label="Name" placeholder="Your name" />
+            <TextField name="name" label="Navn" placeholder="Navnet ditt" />
           )}
           <TextField
             name="email"
             type="email"
-            label="Email"
-            placeholder="you@example.com"
+            label="E-post"
+            placeholder="deg@eksempel.no"
             isRequired
             autoComplete="email"
           />
           <TextField
             name="password"
             type="password"
-            label="Password"
+            label="Passord"
             placeholder="••••••••"
             isRequired
             autoComplete={
@@ -103,15 +105,17 @@ function LoginPage() {
 
           <Button type="submit" size="lg" isDisabled={pending}>
             {pending
-              ? 'Please wait…'
+              ? 'Vent litt…'
               : mode === 'signin'
-                ? 'Sign in'
-                : 'Create account'}
+                ? 'Logg inn'
+                : 'Opprett konto'}
           </Button>
         </Form>
 
         <p className="mt-4 text-center text-sm text-stone-500">
-          {mode === 'signin' ? "Don't have an account? " : 'Already have one? '}
+          {mode === 'signin'
+            ? 'Har du ikke en konto? '
+            : 'Har du allerede en konto? '}
           <button
             type="button"
             className="cursor-pointer font-medium text-brand-700 hover:underline"
@@ -120,7 +124,7 @@ function LoginPage() {
               setMode(mode === 'signin' ? 'signup' : 'signin')
             }}
           >
-            {mode === 'signin' ? 'Sign up' : 'Sign in'}
+            {mode === 'signin' ? 'Registrer deg' : 'Logg inn'}
           </button>
         </p>
       </div>

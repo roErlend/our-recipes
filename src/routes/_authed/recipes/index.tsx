@@ -45,15 +45,15 @@ function RecipesPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">Recipes</h1>
+          <h1 className="text-2xl font-bold text-stone-900">Oppskrifter</h1>
           <p className="text-sm text-stone-500">
-            {recipes.length} saved · {activeCount} active this week
+            {recipes.length} lagret · {activeCount} aktive denne uken
           </p>
         </div>
         <Link to="/recipes/new">
           <Button>
             <Plus className="h-4 w-4" />
-            New recipe
+            Ny oppskrift
           </Button>
         </Link>
       </div>
@@ -64,7 +64,7 @@ function RecipesPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title, description or tag…"
+            placeholder="Søk på tittel, beskrivelse eller etikett…"
             className="w-full rounded-lg border border-stone-300 bg-white py-2 pr-3 pl-9 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           />
         </div>
@@ -72,7 +72,7 @@ function RecipesPage() {
           variant={activeOnly ? 'primary' : 'secondary'}
           onPress={() => setActiveOnly((v) => !v)}
         >
-          Active only
+          Kun aktive
         </Button>
       </div>
 
@@ -120,15 +120,15 @@ function RecipeCard({
         <Checkbox
           isSelected={recipe.isActive}
           onChange={(checked) => onToggleActive(recipe.id, checked)}
-          aria-label={`Mark ${recipe.title} active this week`}
+          aria-label={`Merk ${recipe.title} som aktiv denne uken`}
         />
       </div>
 
       <div className="mt-auto flex flex-wrap items-center gap-2 text-xs text-stone-500">
         <span className="inline-flex items-center gap-1">
           <UtensilsCrossed className="h-3.5 w-3.5" />
-          {recipe.ingredientCount} ingredient
-          {recipe.ingredientCount === 1 ? '' : 's'}
+          {recipe.ingredientCount}{' '}
+          {recipe.ingredientCount === 1 ? 'ingrediens' : 'ingredienser'}
         </span>
         {recipe.sourceUrl && (
           <a
@@ -139,7 +139,7 @@ function RecipeCard({
             onClick={(e) => e.stopPropagation()}
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            Source
+            Kilde
           </a>
         )}
         {recipe.tags.slice(0, 4).map((tag) => (
@@ -163,14 +163,14 @@ function EmptyState({ hasRecipes }: { hasRecipes: boolean }) {
       </div>
       <p className="text-stone-600">
         {hasRecipes
-          ? 'No recipes match your filters.'
-          : 'No recipes yet — add your first one!'}
+          ? 'Ingen oppskrifter samsvarer med filteret ditt.'
+          : 'Ingen oppskrifter ennå – legg til din første!'}
       </p>
       {!hasRecipes && (
         <Link to="/recipes/new">
           <Button>
             <Plus className="h-4 w-4" />
-            New recipe
+            Ny oppskrift
           </Button>
         </Link>
       )}

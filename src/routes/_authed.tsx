@@ -48,7 +48,7 @@ function AuthedLayout() {
             className="mr-2 inline-flex items-center gap-2 text-lg font-bold text-stone-900"
           >
             <UtensilsCrossed className="h-5 w-5 text-brand-600" />
-            Our Recipes
+            Våre oppskrifter
           </Link>
 
           <nav className="flex items-center gap-1">
@@ -59,7 +59,7 @@ function AuthedLayout() {
               activeOptions={{ exact: false }}
             >
               <ChefHat className="h-4 w-4" />
-              Recipes
+              Oppskrifter
             </Link>
             <Link
               to="/shopping"
@@ -67,7 +67,7 @@ function AuthedLayout() {
               activeProps={{ className: `${navLinkClass} ${activeNavLinkClass}` }}
             >
               <ListChecks className="h-4 w-4" />
-              Shopping list
+              Handleliste
             </Link>
           </nav>
 
@@ -77,7 +77,7 @@ function AuthedLayout() {
             </span>
             <Button variant="ghost" size="sm" onPress={handleSignOut}>
               <LogOut className="h-4 w-4" />
-              Sign out
+              Logg ut
             </Button>
           </div>
         </div>

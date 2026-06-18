@@ -28,7 +28,7 @@ function NewRecipePage() {
         params: { recipeId: created.id },
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save recipe')
+      setError(err instanceof Error ? err.message : 'Kunne ikke lagre oppskriften')
       setPending(false)
     }
   }
@@ -41,16 +41,16 @@ function NewRecipePage() {
           className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800"
         >
           <ChevronLeft className="h-4 w-4" />
-          Back to recipes
+          Tilbake til oppskrifter
         </Link>
-        <h1 className="mt-2 text-2xl font-bold text-stone-900">New recipe</h1>
+        <h1 className="mt-2 text-2xl font-bold text-stone-900">Ny oppskrift</h1>
         <p className="text-sm text-stone-500">
-          Write your own, or just paste a link to one you love.
+          Skriv din egen, eller lim inn en lenke til en du er glad i.
         </p>
       </div>
 
       <RecipeForm
-        submitLabel="Save recipe"
+        submitLabel="Lagre oppskrift"
         pending={pending}
         error={error}
         onSubmit={handleSubmit}
