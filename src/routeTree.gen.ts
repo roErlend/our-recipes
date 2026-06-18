@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedShoppingRouteImport } from './routes/_authed/shopping'
 import { Route as AuthedDelingRouteImport } from './routes/_authed/deling'
 import { Route as AuthedRecipesIndexRouteImport } from './routes/_authed/recipes/index'
+import { Route as ApiShapesShoppingRouteImport } from './routes/api/shapes/shopping'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AuthedRecipesNewRouteImport } from './routes/_authed/recipes/new'
 import { Route as AuthedRecipesRecipeIdRouteImport } from './routes/_authed/recipes/$recipeId'
@@ -49,6 +50,11 @@ const AuthedRecipesIndexRoute = AuthedRecipesIndexRouteImport.update({
   path: '/recipes/',
   getParentRoute: () => AuthedRoute,
 } as any)
+const ApiShapesShoppingRoute = ApiShapesShoppingRouteImport.update({
+  id: '/api/shapes/shopping',
+  path: '/api/shapes/shopping',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/recipes/new': typeof AuthedRecipesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/shapes/shopping': typeof ApiShapesShoppingRoute
   '/recipes/': typeof AuthedRecipesIndexRoute
   '/recipes/$recipeId/edit': typeof AuthedRecipesRecipeIdEditRoute
 }
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/recipes/new': typeof AuthedRecipesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/shapes/shopping': typeof ApiShapesShoppingRoute
   '/recipes': typeof AuthedRecipesIndexRoute
   '/recipes/$recipeId/edit': typeof AuthedRecipesRecipeIdEditRoute
 }
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/_authed/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/_authed/recipes/new': typeof AuthedRecipesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/shapes/shopping': typeof ApiShapesShoppingRoute
   '/_authed/recipes/': typeof AuthedRecipesIndexRoute
   '/_authed/recipes/$recipeId_/edit': typeof AuthedRecipesRecipeIdEditRoute
 }
@@ -116,6 +125,7 @@ export interface FileRouteTypes {
     | '/recipes/$recipeId'
     | '/recipes/new'
     | '/api/auth/$'
+    | '/api/shapes/shopping'
     | '/recipes/'
     | '/recipes/$recipeId/edit'
   fileRoutesByTo: FileRoutesByTo
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/recipes/$recipeId'
     | '/recipes/new'
     | '/api/auth/$'
+    | '/api/shapes/shopping'
     | '/recipes'
     | '/recipes/$recipeId/edit'
   id:
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/_authed/recipes/$recipeId'
     | '/_authed/recipes/new'
     | '/api/auth/$'
+    | '/api/shapes/shopping'
     | '/_authed/recipes/'
     | '/_authed/recipes/$recipeId_/edit'
   fileRoutesById: FileRoutesById
@@ -148,6 +160,7 @@ export interface RootRouteChildren {
   AuthedRoute: typeof AuthedRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiShapesShoppingRoute: typeof ApiShapesShoppingRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -193,6 +206,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/recipes/'
       preLoaderRoute: typeof AuthedRecipesIndexRouteImport
       parentRoute: typeof AuthedRoute
+    }
+    '/api/shapes/shopping': {
+      id: '/api/shapes/shopping'
+      path: '/api/shapes/shopping'
+      fullPath: '/api/shapes/shopping'
+      preLoaderRoute: typeof ApiShapesShoppingRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
       id: '/api/auth/$'
@@ -251,6 +271,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthedRoute: AuthedRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiShapesShoppingRoute: ApiShapesShoppingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

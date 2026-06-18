@@ -15,6 +15,7 @@ selection into a combined shopping list.
 | Database       | Postgres on [Neon](https://neon.tech) (generous free tier)    |
 | ORM            | [Drizzle ORM](https://orm.drizzle.team)                       |
 | Auth           | [better-auth](https://better-auth.com) (email/password)       |
+| Realtime sync  | [Electric](https://electric-sql.com) + [TanStack DB](https://tanstack.com/db) (shared shopping list) |
 
 Recipes are **private to their creator** by default. You can invite another
 person from the **Deling** page; once they accept, you share a household — all
@@ -31,7 +32,8 @@ src/
 ├── lib/
 │   ├── auth.ts            # better-auth server instance
 │   ├── auth-client.ts     # better-auth React client
-│   └── queries.ts         # shared TanStack Query options
+│   ├── queries.ts         # shared TanStack Query options
+│   └── shopping-collection.ts  # TanStack DB collection synced from Electric (realtime checks)
 ├── server/
 │   ├── auth.ts            # session helpers (server-only)
 │   ├── recipes.ts         # recipe CRUD / search / active toggle (household-scoped)
@@ -45,6 +47,7 @@ src/
     ├── index.tsx          # → redirects to /recipes
     ├── login.tsx          # sign in / sign up
     ├── api/auth/$.ts      # better-auth request handler
+    ├── api/shapes/shopping.ts  # auth proxy → Electric shape (household-scoped, secret server-side)
     └── _authed/           # behind the login wall; shows pending-invite notices
         ├── recipes/       # list, new, $recipeId (detail), $recipeId/edit
         ├── shopping.tsx   # generated shopping list (optimistic check-off)
@@ -68,6 +71,11 @@ cp .env.example .env
   ```
 - `BETTER_AUTH_URL` — the app's base URL (`http://localhost:3001` in dev; your
   deployed URL in production).
+- `ELECTRIC_SOURCE_ID` / `ELECTRIC_SOURCE_SECRET` — from an [Electric Cloud](https://electric-sql.com)
+  **Postgres Sync** source connected to your Neon database (connect via the Neon
+  OAuth option, which enables logical replication for you). Powers the realtime
+  shopping list. Kept server-side only — the `/api/shapes/shopping` proxy injects
+  them, so the secret never reaches the browser.
 
 > The database is already provisioned and the schema has been migrated. If you
 > ever recreate the database, run the migration step below.
@@ -109,6 +117,11 @@ After editing `src/db/schema.ts`, run `pnpm db:generate` then `pnpm db:migrate`.
 - **Shopping list** (`/shopping`) aggregates the ingredients of every active
   recipe, summing quantities that share the same name + unit. Ticked-off items
   are remembered in the `shopping_check` table; "Reset ticks" clears them.
+  Ticking is **realtime across both members' devices**: writes go to Postgres
+  via server functions (returning the Postgres `txid`), Electric streams the
+  row change to a TanStack DB collection in each browser, and the list
+  re-renders without a refresh. The aggregated items stay server-computed; only
+  the checked state syncs live.
 
 ## Other scripts
 

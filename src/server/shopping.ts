@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '@/db'
@@ -23,11 +23,24 @@ export interface ShoppingItem {
 export interface ShoppingList {
   recipes: { id: string; title: string }[]
   items: ShoppingItem[]
+  /**
+   * The household scope id these checks belong to. The client needs it to build
+   * optimistic rows for the realtime `shopping_check` collection (Electric).
+   */
+  scopeId: string
 }
 
 function itemKey(name: string, unit: string | null) {
   return `${name.trim().toLowerCase()}__${(unit ?? '').trim().toLowerCase()}`
 }
+
+/**
+ * Postgres's current transaction id, read INSIDE a write transaction. Electric
+ * surfaces this xid in the shape log, which lets TanStack DB match the synced
+ * change to its optimistic mutation and reconcile. See
+ * https://electric-sql.com/docs/guides/writes
+ */
+const TXID_SQL = sql`SELECT pg_current_xact_id()::xid::text AS txid`
 
 export const getShoppingList = createServerFn({ method: 'GET' }).handler(
   async (): Promise<ShoppingList> => {
@@ -80,6 +93,7 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
     return {
       recipes: activeRecipes.map((r) => ({ id: r.id, title: r.title })),
       items,
+      scopeId: householdId,
     }
   },
 )
@@ -91,28 +105,34 @@ export const setShoppingChecked = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireUser()
     const { householdId } = await accessibleScope(user.id)
-    await db
-      .insert(shoppingCheck)
-      .values({
-        scopeId: householdId,
-        itemKey: data.key,
-        checked: data.checked,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [shoppingCheck.scopeId, shoppingCheck.itemKey],
-        set: { checked: data.checked, updatedAt: new Date() },
-      })
-    return { key: data.key, checked: data.checked }
+    const txid = await db.transaction(async (tx) => {
+      const [{ txid }] = await tx.execute(TXID_SQL)
+      await tx
+        .insert(shoppingCheck)
+        .values({
+          scopeId: householdId,
+          itemKey: data.key,
+          checked: data.checked,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [shoppingCheck.scopeId, shoppingCheck.itemKey],
+          set: { checked: data.checked, updatedAt: new Date() },
+        })
+      return Number(txid)
+    })
+    return { key: data.key, checked: data.checked, txid }
   })
 
 export const clearShoppingChecks = createServerFn({ method: 'POST' }).handler(
   async () => {
     const user = await requireUser()
     const { householdId } = await accessibleScope(user.id)
-    await db
-      .delete(shoppingCheck)
-      .where(eq(shoppingCheck.scopeId, householdId))
-    return { ok: true }
+    const txid = await db.transaction(async (tx) => {
+      const [{ txid }] = await tx.execute(TXID_SQL)
+      await tx.delete(shoppingCheck).where(eq(shoppingCheck.scopeId, householdId))
+      return Number(txid)
+    })
+    return { ok: true, txid }
   },
 )

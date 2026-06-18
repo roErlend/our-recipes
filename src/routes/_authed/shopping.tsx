@@ -1,20 +1,14 @@
-import {
-  useMutation,
-  useQueryClient,
-  useSuspenseQuery,
-} from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useLiveQuery } from '@tanstack/react-db'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { ListChecks, RotateCcw, ShoppingCart } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { shoppingQueryOptions } from '@/lib/queries'
-import {
-  type ShoppingItem,
-  type ShoppingList,
-  clearShoppingChecks,
-  setShoppingChecked,
-} from '@/server/shopping'
+import { shoppingChecksCollection } from '@/lib/shopping-collection'
+import { type ShoppingItem, type ShoppingList } from '@/server/shopping'
 
 export const Route = createFileRoute('/_authed/shopping')({
   loader: ({ context }) =>
@@ -22,15 +16,14 @@ export const Route = createFileRoute('/_authed/shopping')({
   component: ShoppingPage,
 })
 
-/** Same ordering the server uses: unchecked first, then alphabetical. */
-function sortShoppingItems(items: ShoppingItem[]) {
-  return [...items].sort((a, b) =>
-    a.checked !== b.checked
-      ? a.checked
-        ? 1
-        : -1
-      : a.name.localeCompare(b.name),
-  )
+/** Unchecked first, then alphabetical — matches the server's initial ordering. */
+function sortItems(items: ShoppingItem[], isChecked: (item: ShoppingItem) => boolean) {
+  return [...items].sort((a, b) => {
+    const ca = isChecked(a)
+    const cb = isChecked(b)
+    if (ca !== cb) return ca ? 1 : -1
+    return a.name.localeCompare(b.name)
+  })
 }
 
 function formatAmount(item: ShoppingItem) {
@@ -44,60 +37,18 @@ function formatAmount(item: ShoppingItem) {
   return parts.join(' ')
 }
 
+/** True only after the first client render, so we never run the Electric live query during SSR. */
+function useMounted() {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  return mounted
+}
+
 function ShoppingPage() {
-  const queryClient = useQueryClient()
   const { data } = useSuspenseQuery(shoppingQueryOptions())
-  const { recipes, items } = data
-  const queryKey = shoppingQueryOptions().queryKey
+  const mounted = useMounted()
 
-  const toggleMutation = useMutation({
-    mutationFn: (vars: { key: string; checked: boolean }) =>
-      setShoppingChecked({ data: vars }),
-    onMutate: async ({ key, checked }) => {
-      await queryClient.cancelQueries({ queryKey })
-      const previous = queryClient.getQueryData<ShoppingList>(queryKey)
-      if (previous) {
-        queryClient.setQueryData<ShoppingList>(queryKey, {
-          ...previous,
-          items: sortShoppingItems(
-            previous.items.map((i) => (i.key === key ? { ...i, checked } : i)),
-          ),
-        })
-      }
-      return { previous }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(queryKey, ctx.previous)
-    },
-  })
-
-  const resetMutation = useMutation({
-    mutationFn: () => clearShoppingChecks(),
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey })
-      const previous = queryClient.getQueryData<ShoppingList>(queryKey)
-      if (previous) {
-        queryClient.setQueryData<ShoppingList>(queryKey, {
-          ...previous,
-          items: sortShoppingItems(
-            previous.items.map((i) => ({ ...i, checked: false })),
-          ),
-        })
-      }
-      return { previous }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(queryKey, ctx.previous)
-    },
-  })
-
-  const remaining = items.filter((i) => !i.checked).length
-
-  const toggle = (key: string, checked: boolean) =>
-    toggleMutation.mutate({ key, checked })
-  const reset = () => resetMutation.mutate()
-
-  if (recipes.length === 0) {
+  if (data.recipes.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-stone-300 bg-white/50 py-16 text-center">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-100 text-brand-600">
@@ -115,6 +66,67 @@ function ShoppingPage() {
     )
   }
 
+  // Before mount we render from the server's snapshot (no live query); once
+  // mounted the realtime collection takes over and syncs across devices.
+  return mounted ? (
+    <RealtimeShoppingList list={data} />
+  ) : (
+    <ShoppingView
+      list={data}
+      isChecked={(item) => item.checked}
+      onToggle={() => {}}
+      onReset={() => {}}
+    />
+  )
+}
+
+function RealtimeShoppingList({ list }: { list: ShoppingList }) {
+  const { data: checkRows } = useLiveQuery((q) =>
+    q.from({ c: shoppingChecksCollection }),
+  )
+  const checkedByKey = new Map((checkRows ?? []).map((r) => [r.item_key, r.checked]))
+
+  const isChecked = (item: ShoppingItem) => checkedByKey.get(item.key) ?? false
+
+  const toggle = (item: ShoppingItem, checked: boolean) => {
+    if (shoppingChecksCollection.has(item.key)) {
+      shoppingChecksCollection.update(item.key, (draft) => {
+        draft.checked = checked
+      })
+    } else {
+      shoppingChecksCollection.insert({
+        user_id: list.scopeId,
+        item_key: item.key,
+        checked,
+      })
+    }
+  }
+
+  const reset = () => {
+    const keys = [...checkedByKey.keys()]
+    if (keys.length) shoppingChecksCollection.delete(keys)
+  }
+
+  return (
+    <ShoppingView list={list} isChecked={isChecked} onToggle={toggle} onReset={reset} />
+  )
+}
+
+function ShoppingView({
+  list,
+  isChecked,
+  onToggle,
+  onReset,
+}: {
+  list: ShoppingList
+  isChecked: (item: ShoppingItem) => boolean
+  onToggle: (item: ShoppingItem, checked: boolean) => void
+  onReset: () => void
+}) {
+  const { recipes, items } = list
+  const sorted = sortItems(items, isChecked)
+  const remaining = items.filter((i) => !isChecked(i)).length
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -126,7 +138,7 @@ function ShoppingPage() {
             {recipes.length === 1 ? 'aktiv oppskrift' : 'aktive oppskrifter'}
           </p>
         </div>
-        <Button variant="secondary" size="sm" onPress={reset}>
+        <Button variant="secondary" size="sm" onPress={onReset}>
           <RotateCcw className="h-4 w-4" />
           Nullstill avhuking
         </Button>
@@ -149,22 +161,23 @@ function ShoppingPage() {
         </p>
       ) : (
         <ul className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-          {items.map((item) => {
+          {sorted.map((item) => {
             const amount = formatAmount(item)
+            const checked = isChecked(item)
             return (
               <li
                 key={item.key}
                 className="flex items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-0"
               >
                 <Checkbox
-                  isSelected={item.checked}
-                  onChange={(checked) => toggle(item.key, checked)}
+                  isSelected={checked}
+                  onChange={(value) => onToggle(item, value)}
                   aria-label={`Merk ${item.name} som kjøpt`}
                 />
                 <div className="flex-1">
                   <span
                     className={
-                      item.checked
+                      checked
                         ? 'text-stone-400 line-through'
                         : 'font-medium text-stone-900'
                     }
@@ -178,7 +191,7 @@ function ShoppingPage() {
                 {amount && (
                   <span
                     className={
-                      item.checked
+                      checked
                         ? 'text-sm text-stone-300 line-through'
                         : 'text-sm font-medium text-stone-600'
                     }
