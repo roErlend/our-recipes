@@ -58,7 +58,7 @@ cp .env.example .env
   ```bash
   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
   ```
-- `BETTER_AUTH_URL` — the app's base URL (`http://localhost:3000` in dev; your
+- `BETTER_AUTH_URL` — the app's base URL (`http://localhost:3001` in dev; your
   deployed URL in production).
 
 > The database is already provisioned and the schema has been migrated. If you
@@ -74,7 +74,7 @@ pnpm db:migrate   # applies drizzle/*.sql to the database in DATABASE_URL
 ### 3. Run
 
 ```bash
-pnpm dev          # http://localhost:3000
+pnpm dev          # http://localhost:3001
 ```
 
 On first run, open the app and use **Sign up** to create your account (and one

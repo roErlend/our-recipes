@@ -149,7 +149,13 @@ function RecipeDetailPage() {
         />
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[20rem_1fr]">
+      <div
+        className={
+          recipe.ingredients.length > 0
+            ? 'grid grid-cols-1 gap-6 lg:grid-cols-[20rem_1fr]'
+            : 'grid grid-cols-1 gap-6'
+        }
+      >
         {recipe.ingredients.length > 0 && (
           <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <h2 className="mb-3 text-lg font-semibold text-stone-900">

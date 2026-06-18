@@ -82,26 +82,17 @@ export const getRecipe = createServerFn({ method: 'GET' })
 
 /* ------------------------------ mutations ------------------------------- */
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+type IngredientInputs = z.infer<typeof recipeInput>['ingredients']
 
-async function replaceIngredients(
-  tx: Tx,
-  recipeId: string,
-  items: z.infer<typeof recipeInput>['ingredients'],
-) {
-  await tx.delete(ingredient).where(eq(ingredient.recipeId, recipeId))
-  if (items.length) {
-    await tx.insert(ingredient).values(
-      items.map((item, index) => ({
-        recipeId,
-        name: item.name,
-        quantity: item.quantity ?? null,
-        unit: emptyToNull(item.unit ?? null),
-        note: emptyToNull(item.note ?? null),
-        sortOrder: index,
-      })),
-    )
-  }
+function ingredientRows(recipeId: string, items: IngredientInputs) {
+  return items.map((item, index) => ({
+    recipeId,
+    name: item.name,
+    quantity: item.quantity ?? null,
+    unit: emptyToNull(item.unit ?? null),
+    note: emptyToNull(item.note ?? null),
+    sortOrder: index,
+  }))
 }
 
 export const createRecipe = createServerFn({ method: 'POST' })
@@ -123,7 +114,9 @@ export const createRecipe = createServerFn({ method: 'POST' })
           createdBy: user.id,
         })
         .returning()
-      await replaceIngredients(tx, row.id, data.ingredients)
+      if (data.ingredients.length) {
+        await tx.insert(ingredient).values(ingredientRows(row.id, data.ingredients))
+      }
       return row
     })
 
@@ -152,7 +145,10 @@ export const updateRecipe = createServerFn({ method: 'POST' })
           updatedAt: new Date(),
         })
         .where(eq(recipe.id, id))
-      await replaceIngredients(tx, id, ingredients)
+      await tx.delete(ingredient).where(eq(ingredient.recipeId, id))
+      if (ingredients.length) {
+        await tx.insert(ingredient).values(ingredientRows(id, ingredients))
+      }
     })
 
     return { id }
