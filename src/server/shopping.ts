@@ -1,10 +1,11 @@
 import { createServerFn } from '@tanstack/react-start'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '@/db'
 import { recipe, shoppingCheck } from '@/db/schema'
 import { requireUser } from '@/server/auth'
+import { accessibleScope } from '@/server/sharing'
 
 export interface ShoppingItem {
   key: string
@@ -30,15 +31,19 @@ function itemKey(name: string, unit: string | null) {
 
 export const getShoppingList = createServerFn({ method: 'GET' }).handler(
   async (): Promise<ShoppingList> => {
-    await requireUser()
+    const user = await requireUser()
+    const { householdId, ownerIds } = await accessibleScope(user.id)
 
     const activeRecipes = await db.query.recipe.findMany({
-      where: eq(recipe.isActive, true),
+      where: and(eq(recipe.isActive, true), inArray(recipe.ownerId, ownerIds)),
       columns: { id: true, title: true },
       with: { ingredients: true },
     })
 
-    const checks = await db.select().from(shoppingCheck)
+    const checks = await db
+      .select()
+      .from(shoppingCheck)
+      .where(eq(shoppingCheck.scopeId, householdId))
     const checkedByKey = new Map(checks.map((c) => [c.itemKey, c.checked]))
 
     const map = new Map<string, ShoppingItem>()
@@ -84,12 +89,18 @@ export const setShoppingChecked = createServerFn({ method: 'POST' })
     z.object({ key: z.string().min(1), checked: z.boolean() }).parse(input),
   )
   .handler(async ({ data }) => {
-    await requireUser()
+    const user = await requireUser()
+    const { householdId } = await accessibleScope(user.id)
     await db
       .insert(shoppingCheck)
-      .values({ itemKey: data.key, checked: data.checked, updatedAt: new Date() })
+      .values({
+        scopeId: householdId,
+        itemKey: data.key,
+        checked: data.checked,
+        updatedAt: new Date(),
+      })
       .onConflictDoUpdate({
-        target: shoppingCheck.itemKey,
+        target: [shoppingCheck.scopeId, shoppingCheck.itemKey],
         set: { checked: data.checked, updatedAt: new Date() },
       })
     return { key: data.key, checked: data.checked }
@@ -97,8 +108,11 @@ export const setShoppingChecked = createServerFn({ method: 'POST' })
 
 export const clearShoppingChecks = createServerFn({ method: 'POST' }).handler(
   async () => {
-    await requireUser()
-    await db.delete(shoppingCheck)
+    const user = await requireUser()
+    const { householdId } = await accessibleScope(user.id)
+    await db
+      .delete(shoppingCheck)
+      .where(eq(shoppingCheck.scopeId, householdId))
     return { ok: true }
   },
 )

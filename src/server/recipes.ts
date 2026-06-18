@@ -1,10 +1,11 @@
-import { createServerFn } from '@tanstack/react-start'
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
+import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '@/db'
 import { ingredient, recipe } from '@/db/schema'
 import { requireUser } from '@/server/auth'
+import { accessibleScope } from '@/server/sharing'
 
 /* ----------------------------- validation ------------------------------ */
 
@@ -42,10 +43,11 @@ export const listRecipes = createServerFn({ method: 'GET' })
       input ?? {},
   )
   .handler(async ({ data }) => {
-    await requireUser()
+    const user = await requireUser()
+    const { ownerIds } = await accessibleScope(user.id)
     const term = data.search?.trim()
 
-    const conditions = []
+    const conditions = [inArray(recipe.ownerId, ownerIds)]
     if (data.activeOnly) conditions.push(eq(recipe.isActive, true))
     if (term) {
       const like = `%${term}%`
@@ -54,36 +56,64 @@ export const listRecipes = createServerFn({ method: 'GET' })
           ilike(recipe.title, like),
           ilike(recipe.description, like),
           sql`EXISTS (SELECT 1 FROM unnest(${recipe.tags}) AS t WHERE t ILIKE ${like})`,
-        ),
+        )!,
       )
     }
 
     const rows = await db.query.recipe.findMany({
-      where: conditions.length ? and(...conditions) : undefined,
+      where: and(...conditions),
       orderBy: [desc(recipe.isActive), desc(recipe.updatedAt)],
-      with: { ingredients: { columns: { id: true } } },
+      with: {
+        ingredients: { columns: { id: true } },
+        owner: { columns: { name: true, email: true } },
+      },
     })
 
-    return rows.map(({ ingredients, ...r }) => ({
+    return rows.map(({ ingredients, owner, ...r }) => ({
       ...r,
       ingredientCount: ingredients.length,
+      isOwner: r.ownerId === user.id,
+      ownerName: owner?.name || owner?.email || null,
     }))
   })
 
 export const getRecipe = createServerFn({ method: 'GET' })
   .validator((id: string) => z.string().min(1).parse(id))
   .handler(async ({ data: id }) => {
-    await requireUser()
+    const user = await requireUser()
+    const { ownerIds } = await accessibleScope(user.id)
     const row = await db.query.recipe.findFirst({
       where: eq(recipe.id, id),
       with: {
         ingredients: {
           orderBy: (i, { asc }) => [asc(i.sortOrder)],
         },
+        owner: { columns: { name: true, email: true } },
       },
     })
-    return row ?? null
+    if (!row || !ownerIds.includes(row.ownerId)) return null
+    const { owner, ...rest } = row
+    return {
+      ...rest,
+      isOwner: row.ownerId === user.id,
+      ownerName: owner?.name || owner?.email || null,
+    }
   })
+
+/** Throws unless the user may administer the given recipe (own household). */
+const assertCanAdminister = createServerOnlyFn(
+  async (userId: string, recipeId: string) => {
+    const { ownerIds } = await accessibleScope(userId)
+    const [row] = await db
+      .select({ ownerId: recipe.ownerId })
+      .from(recipe)
+      .where(eq(recipe.id, recipeId))
+      .limit(1)
+    if (!row || !ownerIds.includes(row.ownerId)) {
+      throw new Error('FORBIDDEN')
+    }
+  },
+)
 
 /* ------------------------------ mutations ------------------------------- */
 
@@ -116,7 +146,7 @@ export const createRecipe = createServerFn({ method: 'POST' })
           instructions: emptyToNull(data.instructions ?? null),
           servings: data.servings ?? null,
           tags: data.tags,
-          createdBy: user.id,
+          ownerId: user.id,
         })
         .returning()
       if (data.ingredients.length) {
@@ -133,8 +163,9 @@ export const updateRecipe = createServerFn({ method: 'POST' })
     recipeInput.extend({ id: z.string().min(1) }).parse(input),
   )
   .handler(async ({ data }) => {
-    await requireUser()
+    const user = await requireUser()
     const { id, ingredients, ...fields } = data
+    await assertCanAdminister(user.id, id)
 
     await db.transaction(async (tx) => {
       await tx
@@ -164,7 +195,8 @@ export const setRecipeActive = createServerFn({ method: 'POST' })
     z.object({ id: z.string().min(1), isActive: z.boolean() }).parse(input),
   )
   .handler(async ({ data }) => {
-    await requireUser()
+    const user = await requireUser()
+    await assertCanAdminister(user.id, data.id)
     await db
       .update(recipe)
       .set({ isActive: data.isActive, updatedAt: new Date() })
@@ -175,7 +207,8 @@ export const setRecipeActive = createServerFn({ method: 'POST' })
 export const deleteRecipe = createServerFn({ method: 'POST' })
   .validator((id: string) => z.string().min(1).parse(id))
   .handler(async ({ data: id }) => {
-    await requireUser()
+    const user = await requireUser()
+    await assertCanAdminister(user.id, id)
     await db.delete(recipe).where(eq(recipe.id, id))
     return { id }
   })

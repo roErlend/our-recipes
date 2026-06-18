@@ -8,6 +8,34 @@
       "when": 1781780549913,
       "tag": "0000_fixed_captain_flint",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781787518488,
+      "tag": "0001_simple_amazoness",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781787937865,
+      "tag": "0002_amusing_cammi",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781787976806,
+      "tag": "0003_friendly_anthem",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781788057879,
+      "tag": "0004_petite_marrow",
+      "breakpoints": true
     }
   ]
 }

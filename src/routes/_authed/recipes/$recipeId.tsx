@@ -154,6 +154,12 @@ function RecipeDetailPage() {
               Aktiv denne uken
             </Checkbox>
           </label>
+          {!recipe.isOwner && recipe.ownerName && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
+              <Users className="h-4 w-4" />
+              Delt av {recipe.ownerName}
+            </span>
+          )}
           {recipe.servings != null && (
             <span className="inline-flex items-center gap-1.5 text-sm text-stone-600">
               <Users className="h-4 w-4 text-stone-400" />

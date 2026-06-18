@@ -5,7 +5,7 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ExternalLink, Plus, Search, UtensilsCrossed } from 'lucide-react'
+import { ExternalLink, Plus, Search, Users, UtensilsCrossed } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -156,6 +156,12 @@ function RecipeCard({
           {recipe.ingredientCount}{' '}
           {recipe.ingredientCount === 1 ? 'ingrediens' : 'ingredienser'}
         </span>
+        {!recipe.isOwner && recipe.ownerName && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">
+            <Users className="h-3.5 w-3.5" />
+            {recipe.ownerName}
+          </span>
+        )}
         {recipe.sourceUrl && (
           <a
             href={recipe.sourceUrl}

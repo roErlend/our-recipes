@@ -4,8 +4,10 @@ import {
   doublePrecision,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
+  unique,
 } from 'drizzle-orm/pg-core'
 
 /* -------------------------------------------------------------------------- */
@@ -93,9 +95,14 @@ export const recipe = pgTable('recipe', {
     .default(sql`'{}'::text[]`),
   /** Marked as part of this week's meal plan. */
   isActive: boolean('is_active').notNull().default(false),
-  createdBy: text('created_by').references(() => user.id, {
-    onDelete: 'set null',
-  }),
+  /**
+   * The user who owns this recipe. Recipes are private to the owner unless the
+   * owner shares access to their collection via {@link accessGrant}. (DB column
+   * kept as `created_by` from the original shared-collection model.)
+   */
+  ownerId: text('created_by')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at')
     .$defaultFn(() => new Date())
     .notNull(),
@@ -122,23 +129,79 @@ export const ingredient = pgTable('ingredient', {
 })
 
 /**
- * Persisted "ticked off" state for the generated shopping list. Keyed by a
- * normalized item key (name + unit) so it survives recipe re-aggregation.
+ * Households group users who share everything. A user with no row here is their
+ * own household (scope = their own id). When someone accepts an invite they
+ * join the inviter's household, so all members share recipes and one shopping
+ * list.
  */
-export const shoppingCheck = pgTable('shopping_check', {
-  itemKey: text('item_key').primaryKey(),
-  checked: boolean('checked').notNull().default(false),
-  updatedAt: timestamp('updated_at')
+export const householdMember = pgTable('household_member', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  /** Shared scope id (the household). Defaults to the founding user's id. */
+  householdId: text('household_id').notNull(),
+  createdAt: timestamp('created_at')
     .$defaultFn(() => new Date())
     .notNull(),
 })
+
+/**
+ * A pending invitation from one user to another (identified by email). No email
+ * is sent — the invitee sees it as a notification on login. Consumed (deleted)
+ * on accept/decline.
+ */
+export const invite = pgTable(
+  'invite',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    fromUserId: text('from_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    /** Invitee email, stored lowercased. */
+    toEmail: text('to_email').notNull(),
+    createdAt: timestamp('created_at')
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (t) => [unique('invite_from_to_uq').on(t.fromUserId, t.toEmail)],
+)
+
+/**
+ * Persisted "ticked off" state for the generated shopping list, scoped to a
+ * household so members share one list. Keyed by scope + normalized item key
+ * (name + unit) so it survives recipe re-aggregation. The scope id is a
+ * household id (which is always some user's id, hence the `user_id` column /
+ * FK kept from an earlier per-user iteration).
+ */
+export const shoppingCheck = pgTable(
+  'shopping_check',
+  {
+    /**
+     * Household id (shared scope) — a generated id for shared households, or the
+     * user's own id when solo. Not a FK: it's an opaque scope key.
+     */
+    scopeId: text('user_id').notNull(),
+    itemKey: text('item_key').notNull(),
+    checked: boolean('checked').notNull().default(false),
+    updatedAt: timestamp('updated_at')
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.scopeId, t.itemKey] })],
+)
 
 /* -------------------------------------------------------------------------- */
 /*  Relations                                                                 */
 /* -------------------------------------------------------------------------- */
 
-export const recipeRelations = relations(recipe, ({ many }) => ({
+export const recipeRelations = relations(recipe, ({ one, many }) => ({
   ingredients: many(ingredient),
+  owner: one(user, {
+    fields: [recipe.ownerId],
+    references: [user.id],
+  }),
 }))
 
 export const ingredientRelations = relations(ingredient, ({ one }) => ({
@@ -152,3 +215,5 @@ export type Recipe = typeof recipe.$inferSelect
 export type NewRecipe = typeof recipe.$inferInsert
 export type Ingredient = typeof ingredient.$inferSelect
 export type NewIngredient = typeof ingredient.$inferInsert
+export type Invite = typeof invite.$inferSelect
+export type HouseholdMember = typeof householdMember.$inferSelect

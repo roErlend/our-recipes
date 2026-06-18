@@ -14,22 +14,29 @@ selection into a combined shopping list.
 | UI primitives  | [React Aria Components](https://react-spectrum.adobe.com/react-aria/) |
 | Database       | Postgres on [Neon](https://neon.tech) (generous free tier)    |
 | ORM            | [Drizzle ORM](https://orm.drizzle.team)                       |
-| Auth           | [better-auth](https://better-auth.com) (shared email/password)|
+| Auth           | [better-auth](https://better-auth.com) (email/password)       |
+
+Recipes are **private to their creator** by default. You can invite another
+person from the **Deling** page; once they accept, you share a household — all
+recipes and one shopping list, administered by either of you. (UI copy is in
+Norwegian / bokmål; examples use metric units.)
 
 ## Project layout
 
 ```
 src/
 ├── db/
-│   ├── schema.ts          # Drizzle schema: auth tables, recipe, ingredient, shopping_check
+│   ├── schema.ts          # Drizzle schema: auth, recipe, ingredient, shopping_check, invite, household_member
 │   └── index.ts           # Drizzle client (postgres.js)
 ├── lib/
 │   ├── auth.ts            # better-auth server instance
-│   └── auth-client.ts     # better-auth React client
+│   ├── auth-client.ts     # better-auth React client
+│   └── queries.ts         # shared TanStack Query options
 ├── server/
 │   ├── auth.ts            # session helpers (server-only)
-│   ├── recipes.ts         # recipe CRUD / search / active toggle (server functions)
-│   └── shopping.ts        # shopping-list aggregation (server functions)
+│   ├── recipes.ts         # recipe CRUD / search / active toggle (household-scoped)
+│   ├── shopping.ts        # shopping-list aggregation (household-scoped)
+│   └── sharing.ts         # invites + household sharing
 ├── components/
 │   ├── RecipeForm.tsx     # shared create/edit form
 │   └── ui/                # Button, TextField, Checkbox (React Aria + tailwind-variants)
@@ -38,9 +45,10 @@ src/
     ├── index.tsx          # → redirects to /recipes
     ├── login.tsx          # sign in / sign up
     ├── api/auth/$.ts      # better-auth request handler
-    └── _authed/           # everything behind the login wall
+    └── _authed/           # behind the login wall; shows pending-invite notices
         ├── recipes/       # list, new, $recipeId (detail), $recipeId/edit
-        └── shopping.tsx   # generated shopping list
+        ├── shopping.tsx   # generated shopping list (optimistic check-off)
+        └── deling.tsx     # invite people & manage sharing
 ```
 
 ## Setup
@@ -77,8 +85,9 @@ pnpm db:migrate   # applies drizzle/*.sql to the database in DATABASE_URL
 pnpm dev          # http://localhost:3001
 ```
 
-On first run, open the app and use **Sign up** to create your account (and one
-for your partner). Everyone shares the same recipe collection.
+On first run, open the app and use **Sign up** to create your account. Your
+recipes are private until you invite someone from **Deling** and they accept,
+after which you share everything.
 
 ## Database commands
 
