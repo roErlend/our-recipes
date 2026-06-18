@@ -1,25 +1,30 @@
 import { useMemo, useState } from 'react'
-import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { ExternalLink, Plus, Search, UtensilsCrossed } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
-import {
-  type RecipeListItem,
-  listRecipes,
-  setRecipeActive,
-} from '@/server/recipes'
+import { recipesQueryOptions, shoppingQueryOptions } from '@/lib/queries'
+import { type RecipeListItem, setRecipeActive } from '@/server/recipes'
 
 export const Route = createFileRoute('/_authed/recipes/')({
-  loader: () => listRecipes(),
+  loader: ({ context }) =>
+    context.queryClient.ensureQueryData(recipesQueryOptions()),
   component: RecipesPage,
 })
 
 function RecipesPage() {
-  const recipes = Route.useLoaderData()
-  const router = useRouter()
+  const queryClient = useQueryClient()
+  const { data: recipes } = useSuspenseQuery(recipesQueryOptions())
   const [search, setSearch] = useState('')
   const [activeOnly, setActiveOnly] = useState(false)
+
+  const recipesKey = recipesQueryOptions().queryKey
 
   const activeCount = recipes.filter((r) => r.isActive).length
 
@@ -36,10 +41,31 @@ function RecipesPage() {
     })
   }, [recipes, search, activeOnly])
 
-  async function toggleActive(id: string, isActive: boolean) {
-    await setRecipeActive({ data: { id, isActive } })
-    router.invalidate()
-  }
+  const activeMutation = useMutation({
+    mutationFn: (vars: { id: string; isActive: boolean }) =>
+      setRecipeActive({ data: vars }),
+    onMutate: async ({ id, isActive }) => {
+      await queryClient.cancelQueries({ queryKey: recipesKey })
+      const previous = queryClient.getQueryData<RecipeListItem[]>(recipesKey)
+      if (previous) {
+        queryClient.setQueryData<RecipeListItem[]>(
+          recipesKey,
+          previous.map((r) => (r.id === id ? { ...r, isActive } : r)),
+        )
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(recipesKey, ctx.previous)
+    },
+    onSettled: () => {
+      // The shopping list is derived from active recipes — refresh it.
+      queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
+    },
+  })
+
+  const toggleActive = (id: string, isActive: boolean) =>
+    activeMutation.mutate({ id, isActive })
 
   return (
     <div className="flex flex-col gap-6">

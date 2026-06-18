@@ -1,4 +1,9 @@
 import { useState } from 'react'
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import {
   ChevronLeft,
@@ -10,10 +15,20 @@ import {
 
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
-import { deleteRecipe, getRecipe, setRecipeActive } from '@/server/recipes'
+import {
+  recipeQueryOptions,
+  recipesQueryOptions,
+  shoppingQueryOptions,
+} from '@/lib/queries'
+import {
+  type RecipeDetail,
+  deleteRecipe,
+  setRecipeActive,
+} from '@/server/recipes'
 
 export const Route = createFileRoute('/_authed/recipes/$recipeId')({
-  loader: ({ params }) => getRecipe({ data: params.recipeId }),
+  loader: ({ context, params }) =>
+    context.queryClient.ensureQueryData(recipeQueryOptions(params.recipeId)),
   component: RecipeDetailPage,
 })
 
@@ -24,10 +39,49 @@ function formatQuantity(quantity: number | null, unit: string | null) {
 }
 
 function RecipeDetailPage() {
-  const recipe = Route.useLoaderData()
+  const { recipeId } = Route.useParams()
+  const queryClient = useQueryClient()
   const router = useRouter()
+  const { data: recipe } = useSuspenseQuery(recipeQueryOptions(recipeId))
   const [confirmingDelete, setConfirmingDelete] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+
+  const recipeKey = recipeQueryOptions(recipeId).queryKey
+
+  const activeMutation = useMutation({
+    mutationFn: (checked: boolean) =>
+      setRecipeActive({ data: { id: recipeId, isActive: checked } }),
+    onMutate: async (checked) => {
+      await queryClient.cancelQueries({ queryKey: recipeKey })
+      const previous = queryClient.getQueryData<RecipeDetail | null>(recipeKey)
+      if (previous) {
+        queryClient.setQueryData<RecipeDetail>(recipeKey, {
+          ...previous,
+          isActive: checked,
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous !== undefined)
+        queryClient.setQueryData(recipeKey, ctx.previous)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: recipesQueryOptions().queryKey })
+      queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteRecipe({ data: recipeId }),
+    onSuccess: async () => {
+      queryClient.removeQueries({ queryKey: recipeKey })
+      await queryClient.invalidateQueries({
+        queryKey: recipesQueryOptions().queryKey,
+      })
+      queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
+      router.navigate({ to: '/recipes' })
+    },
+  })
 
   if (!recipe) {
     return (
@@ -40,17 +94,9 @@ function RecipeDetailPage() {
     )
   }
 
-  async function toggleActive(checked: boolean) {
-    await setRecipeActive({ data: { id: recipe!.id, isActive: checked } })
-    router.invalidate()
-  }
-
-  async function handleDelete() {
-    setDeleting(true)
-    await deleteRecipe({ data: recipe!.id })
-    await router.invalidate()
-    router.navigate({ to: '/recipes' })
-  }
+  const toggleActive = (checked: boolean) => activeMutation.mutate(checked)
+  const handleDelete = () => deleteMutation.mutate()
+  const deleting = deleteMutation.isPending
 
   return (
     <article className="flex flex-col gap-6">

@@ -1,19 +1,37 @@
-import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { ListChecks, RotateCcw, ShoppingCart } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
+import { shoppingQueryOptions } from '@/lib/queries'
 import {
   type ShoppingItem,
+  type ShoppingList,
   clearShoppingChecks,
-  getShoppingList,
   setShoppingChecked,
 } from '@/server/shopping'
 
 export const Route = createFileRoute('/_authed/shopping')({
-  loader: () => getShoppingList(),
+  loader: ({ context }) =>
+    context.queryClient.ensureQueryData(shoppingQueryOptions()),
   component: ShoppingPage,
 })
+
+/** Same ordering the server uses: unchecked first, then alphabetical. */
+function sortShoppingItems(items: ShoppingItem[]) {
+  return [...items].sort((a, b) =>
+    a.checked !== b.checked
+      ? a.checked
+        ? 1
+        : -1
+      : a.name.localeCompare(b.name),
+  )
+}
 
 function formatAmount(item: ShoppingItem) {
   const parts: string[] = []
@@ -22,25 +40,62 @@ function formatAmount(item: ShoppingItem) {
   } else if (item.unit) {
     parts.push(item.unit)
   }
-  if (item.hasUnquantified && item.quantity != null) parts.push('+ more')
+  if (item.hasUnquantified && item.quantity != null) parts.push('+ mer')
   return parts.join(' ')
 }
 
 function ShoppingPage() {
-  const { recipes, items } = Route.useLoaderData()
-  const router = useRouter()
+  const queryClient = useQueryClient()
+  const { data } = useSuspenseQuery(shoppingQueryOptions())
+  const { recipes, items } = data
+  const queryKey = shoppingQueryOptions().queryKey
+
+  const toggleMutation = useMutation({
+    mutationFn: (vars: { key: string; checked: boolean }) =>
+      setShoppingChecked({ data: vars }),
+    onMutate: async ({ key, checked }) => {
+      await queryClient.cancelQueries({ queryKey })
+      const previous = queryClient.getQueryData<ShoppingList>(queryKey)
+      if (previous) {
+        queryClient.setQueryData<ShoppingList>(queryKey, {
+          ...previous,
+          items: sortShoppingItems(
+            previous.items.map((i) => (i.key === key ? { ...i, checked } : i)),
+          ),
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(queryKey, ctx.previous)
+    },
+  })
+
+  const resetMutation = useMutation({
+    mutationFn: () => clearShoppingChecks(),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey })
+      const previous = queryClient.getQueryData<ShoppingList>(queryKey)
+      if (previous) {
+        queryClient.setQueryData<ShoppingList>(queryKey, {
+          ...previous,
+          items: sortShoppingItems(
+            previous.items.map((i) => ({ ...i, checked: false })),
+          ),
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(queryKey, ctx.previous)
+    },
+  })
 
   const remaining = items.filter((i) => !i.checked).length
 
-  async function toggle(key: string, checked: boolean) {
-    await setShoppingChecked({ data: { key, checked } })
-    router.invalidate()
-  }
-
-  async function reset() {
-    await clearShoppingChecks()
-    router.invalidate()
-  }
+  const toggle = (key: string, checked: boolean) =>
+    toggleMutation.mutate({ key, checked })
+  const reset = () => resetMutation.mutate()
 
   if (recipes.length === 0) {
     return (

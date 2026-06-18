@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { ChevronLeft } from 'lucide-react'
 
@@ -7,16 +8,24 @@ import {
   type RecipeFormValues,
   type RecipeSubmitValues,
 } from '@/components/RecipeForm'
-import { getRecipe, updateRecipe } from '@/server/recipes'
+import {
+  recipeQueryOptions,
+  recipesQueryOptions,
+  shoppingQueryOptions,
+} from '@/lib/queries'
+import { updateRecipe } from '@/server/recipes'
 
 export const Route = createFileRoute('/_authed/recipes/$recipeId_/edit')({
-  loader: ({ params }) => getRecipe({ data: params.recipeId }),
+  loader: ({ context, params }) =>
+    context.queryClient.ensureQueryData(recipeQueryOptions(params.recipeId)),
   component: EditRecipePage,
 })
 
 function EditRecipePage() {
-  const recipe = Route.useLoaderData()
+  const { recipeId } = Route.useParams()
   const router = useRouter()
+  const queryClient = useQueryClient()
+  const { data: recipe } = useSuspenseQuery(recipeQueryOptions(recipeId))
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -54,11 +63,21 @@ function EditRecipePage() {
     setPending(true)
     setError(null)
     try {
-      await updateRecipe({ data: { id: recipe!.id, ...values } })
-      await router.invalidate()
+      await updateRecipe({ data: { id: recipeId, ...values } })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: recipeQueryOptions(recipeId).queryKey,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: recipesQueryOptions().queryKey,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: shoppingQueryOptions().queryKey,
+        }),
+      ])
       router.navigate({
         to: '/recipes/$recipeId',
-        params: { recipeId: recipe!.id },
+        params: { recipeId },
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kunne ikke lagre oppskriften')

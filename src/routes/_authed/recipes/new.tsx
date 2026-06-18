@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { ChevronLeft } from 'lucide-react'
 
@@ -6,6 +7,7 @@ import {
   RecipeForm,
   type RecipeSubmitValues,
 } from '@/components/RecipeForm'
+import { recipesQueryOptions } from '@/lib/queries'
 import { createRecipe } from '@/server/recipes'
 
 export const Route = createFileRoute('/_authed/recipes/new')({
@@ -14,6 +16,7 @@ export const Route = createFileRoute('/_authed/recipes/new')({
 
 function NewRecipePage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -22,7 +25,9 @@ function NewRecipePage() {
     setError(null)
     try {
       const created = await createRecipe({ data: values })
-      await router.invalidate()
+      await queryClient.invalidateQueries({
+        queryKey: recipesQueryOptions().queryKey,
+      })
       router.navigate({
         to: '/recipes/$recipeId',
         params: { recipeId: created.id },
