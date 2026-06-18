@@ -1,0 +1,202 @@
+import { useState } from 'react'
+import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
+import {
+  ChevronLeft,
+  ExternalLink,
+  Pencil,
+  Trash2,
+  Users,
+} from 'lucide-react'
+
+import { Button } from '@/components/ui/Button'
+import { Checkbox } from '@/components/ui/Checkbox'
+import { deleteRecipe, getRecipe, setRecipeActive } from '@/server/recipes'
+
+export const Route = createFileRoute('/_authed/recipes/$recipeId')({
+  loader: ({ params }) => getRecipe({ data: params.recipeId }),
+  component: RecipeDetailPage,
+})
+
+function formatQuantity(quantity: number | null, unit: string | null) {
+  if (quantity == null && !unit) return null
+  const qty = quantity == null ? '' : `${+quantity.toFixed(2)}`
+  return [qty, unit].filter(Boolean).join(' ')
+}
+
+function RecipeDetailPage() {
+  const recipe = Route.useLoaderData()
+  const router = useRouter()
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  if (!recipe) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <p className="text-stone-600">This recipe could not be found.</p>
+        <Link to="/recipes">
+          <Button variant="secondary">Back to recipes</Button>
+        </Link>
+      </div>
+    )
+  }
+
+  async function toggleActive(checked: boolean) {
+    await setRecipeActive({ data: { id: recipe!.id, isActive: checked } })
+    router.invalidate()
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    await deleteRecipe({ data: recipe!.id })
+    await router.invalidate()
+    router.navigate({ to: '/recipes' })
+  }
+
+  return (
+    <article className="flex flex-col gap-6">
+      <Link
+        to="/recipes"
+        className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        Back to recipes
+      </Link>
+
+      <header className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-stone-900">{recipe.title}</h1>
+            {recipe.description && (
+              <p className="mt-2 max-w-2xl text-stone-600">
+                {recipe.description}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Link to="/recipes/$recipeId/edit" params={{ recipeId: recipe.id }}>
+              <Button variant="secondary" size="sm">
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Button>
+            </Link>
+            {confirmingDelete ? (
+              <Button
+                variant="danger"
+                size="sm"
+                isDisabled={deleting}
+                onPress={handleDelete}
+              >
+                <Trash2 className="h-4 w-4" />
+                {deleting ? 'Deleting…' : 'Confirm delete'}
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onPress={() => setConfirmingDelete(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 shadow-sm">
+            <Checkbox isSelected={recipe.isActive} onChange={toggleActive}>
+              Active this week
+            </Checkbox>
+          </label>
+          {recipe.servings != null && (
+            <span className="inline-flex items-center gap-1.5 text-sm text-stone-600">
+              <Users className="h-4 w-4 text-stone-400" />
+              Serves {recipe.servings}
+            </span>
+          )}
+          {recipe.sourceUrl && (
+            <a
+              href={recipe.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline"
+            >
+              <ExternalLink className="h-4 w-4" />
+              View original recipe
+            </a>
+          )}
+        </div>
+
+        {recipe.tags.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {recipe.tags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full bg-brand-100 px-3 py-1 text-sm font-medium text-brand-800"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </header>
+
+      {recipe.imageUrl && (
+        <img
+          src={recipe.imageUrl}
+          alt={recipe.title}
+          className="max-h-96 w-full rounded-2xl object-cover"
+        />
+      )}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[20rem_1fr]">
+        {recipe.ingredients.length > 0 && (
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="mb-3 text-lg font-semibold text-stone-900">
+              Ingredients
+            </h2>
+            <ul className="flex flex-col gap-2">
+              {recipe.ingredients.map((ing) => {
+                const amount = formatQuantity(ing.quantity, ing.unit)
+                return (
+                  <li
+                    key={ing.id}
+                    className="flex items-baseline gap-2 border-b border-stone-100 pb-2 text-sm last:border-0"
+                  >
+                    {amount && (
+                      <span className="font-medium text-stone-900">
+                        {amount}
+                      </span>
+                    )}
+                    <span className="text-stone-700">{ing.name}</span>
+                    {ing.note && (
+                      <span className="text-stone-400">({ing.note})</span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )}
+
+        {recipe.instructions ? (
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="mb-3 text-lg font-semibold text-stone-900">
+              Instructions
+            </h2>
+            <div className="prose prose-stone max-w-none whitespace-pre-wrap text-stone-700">
+              {recipe.instructions}
+            </div>
+          </section>
+        ) : (
+          !recipe.ingredients.length && (
+            <section className="rounded-2xl border border-dashed border-stone-300 bg-white/50 p-8 text-center text-stone-500">
+              This is a linked recipe — open the original above for the full
+              method.
+            </section>
+          )
+        )}
+      </div>
+    </article>
+  )
+}
