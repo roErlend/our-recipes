@@ -31,7 +31,7 @@ A single JSON **object**:
 
 | Field          | Type             | Required | Notes                                                                 |
 | -------------- | ---------------- | -------- | --------------------------------------------------------------------- |
-| `title`        | string           | yes      | The dish name, in the source language. e.g. `"Pasta Carbonara"`.      |
+| `title`        | string           | yes      | The dish name in **Norwegian** (translate; keep proper/brand names — see Language). |
 | `description`  | string \| null   | no       | One short line if the page has a natural summary; else `null`.        |
 | `sourceUrl`    | string           | yes      | The **input URL** (so it lands in the recipe's "Kilde" field).        |
 | `imageUrl`     | string \| null   | no       | Absolute URL of the main image (JSON-LD `image` / `og:image`), else `null`. |
@@ -44,7 +44,7 @@ Each `ingredients` item:
 
 | Field      | Type            | Required | Notes                                                    |
 | ---------- | --------------- | -------- | -------------------------------------------------------- |
-| `name`     | string          | yes      | The ingredient, in the source language, e.g. `"Hvitløk"`. |
+| `name`     | string          | yes      | The ingredient in **Norwegian** (translate — see Language), e.g. `"Hvitløk"`. |
 | `quantity` | number \| null  | no       | Numeric amount only. `null`/omit when there's none.       |
 | `unit`     | string \| null  | no       | Metric unit, e.g. `"g"`, `"dl"`, `"ss"`.                  |
 | `note`     | string \| null  | no       | Prep/qualifier, e.g. `"finhakket"`, `"romtemperert"`.     |
@@ -57,17 +57,34 @@ Each `ingredients` item:
 3. **Prep words** ("finely chopped", "delt i to", "romtemperert") → `note`, not `name`.
 4. **No number** → omit `quantity` (e.g. "Salt etter smak" → `{ "name": "Salt" }`).
 5. **Ranges** ("2-3 ss") → pick the lower value, put the range in `note` (`"2–3"`).
-6. **Keep food names in the source language** — don't translate the ingredient or
-   title. (The app UI is Norwegian, but the recipe stays in its own language.)
+6. **Translate to Norwegian** — see **Language** below. (This is the one rule that
+   differs from `ingredients-to-json`, which keeps the source language.)
 
 Norwegian metric vocabulary: `g`, `kg`, `ml`, `dl`, `l`, `ts`, `ss`, `stk`,
 `fedd` (garlic clove), `klype`, `boks`, `pk`.
+
+## Language
+
+Translate everything user-facing into **Norwegian (bokmål)** — the `title`,
+`description`, `instructions`, every ingredient `name`, every `note`, and the
+units — translating by meaning, not word for word. Use Norwegian metric units
+(`ts`, `ss`, `dl`, `stk`, `fedd`, `klype`…).
+
+**Don't guess.** If you're unsure of a term, or something has no clean Norwegian
+equivalent (a specialty product, a regional item, an unfamiliar cut), **leave
+that part in English** rather than inventing a translation — an honest English
+word beats a wrong Norwegian one. Keep proper/brand names as-is (e.g. `"Knorr"`,
+`"Aleppo"`, `"Shatta"`).
+
+Whenever you leave something untranslated or you're unsure, collect it and show
+the user a short **"Sjekk oversettelsen"** list afterward (ingredient/word →
+why), so they can correct it. If everything translated cleanly, say so.
 
 ### Instructions
 
 Flatten `recipeInstructions` (or the visible steps) into a single string, one
 step per line, numbered. Drop "Step 1"/"Trinn 1" prefixes the site adds — just
-use `1.`, `2.`, … Keep the steps in the source language. Example:
+use `1.`, `2.`, … Translate the steps to Norwegian (see **Language**). Example:
 
 ```
 1. Kok pastaen al dente i godt saltet vann.
@@ -100,10 +117,15 @@ use `1.`, `2.`, … Keep the steps in the source language. Example:
 
 ## Finishing up
 
-- Output **only** the JSON object (no markdown fences), so it can be used directly.
-- Sanity-check it's valid JSON and that `sourceUrl` is the URL you were given.
-- Tell the user the two-step import: paste the **whole object** into **Ny
-  oppskrift → Ingredienser → Importer JSON** (the parser reads the `ingredients`
-  key and ignores the rest), then copy `title`, `description`, `instructions`,
-  `servings`, `imageUrl` and `sourceUrl` into their fields. Flag if `imageUrl`
-  might be hotlink-protected (some sites block external embedding).
+- **Copy the JSON to the clipboard automatically.** Write the JSON to a temp file
+  and pipe it through `pbcopy` (macOS) so the exact bytes land on the clipboard —
+  e.g. `pbcopy < /tmp/recipe.json` (using a file avoids quoting/newline mangling).
+  Tell the user it's copied.
+- Also show the JSON (a ```json block is fine for readability) and
+  sanity-check it's valid and that `sourceUrl` is the URL you were given.
+- Show a short **"Sjekk oversettelsen"** list of anything you left in English or
+  were unsure about (ingredient/word → why). If everything translated cleanly,
+  say so.
+- Tell the user how to import: on the recipes page, **⋯ next to «Ny oppskrift» →
+  «Importer fra JSON»**, paste the whole object, review, and save. Flag if
+  `imageUrl` might be hotlink-protected (some sites block external embedding).
