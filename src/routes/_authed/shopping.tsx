@@ -11,9 +11,10 @@ import { ListChecks, ShoppingCart, Trash2, X } from 'lucide-react'
 import { AddShoppingItem } from '@/components/AddShoppingItem'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
-import { categoryRank } from '@/lib/categories'
+import { categoryRank, DEFAULT_CATEGORY } from '@/lib/categories'
 import { ingredientsQueryOptions, shoppingQueryOptions } from '@/lib/queries'
 import { shoppingChecksCollection } from '@/lib/shopping-collection'
+import { type CatalogIngredient } from '@/server/ingredients'
 import {
   addManualItem,
   removeCheckedItems,
@@ -82,19 +83,54 @@ function useMounted() {
  *  realtime checkbox sync is separate, via the Electric collection below). */
 function useShoppingMutations() {
   const queryClient = useQueryClient()
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
+  const shoppingKey = shoppingQueryOptions().queryKey
+  const ingredientsKey = ingredientsQueryOptions().queryKey
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: shoppingKey })
 
   const add = useMutation({
     mutationFn: (input: { name: string; category?: string }) =>
       addManualItem({ data: input }),
-    onSuccess: () => {
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: shoppingKey })
+      const previous = queryClient.getQueryData<ShoppingList>(shoppingKey)
+      const name = input.name.trim()
+      // Manual items carry no unit, so the key mirrors the server's
+      // itemKey(name, null) = "<lowercased name>__".
+      const key = `${name.toLowerCase()}__`
+      // Show the right category immediately: a known ingredient's catalog
+      // category, else the one chosen for the new ingredient, else the default.
+      const catalog = queryClient.getQueryData<CatalogIngredient[]>(ingredientsKey)
+      const category =
+        catalog?.find((c) => c.key === name.toLowerCase())?.category ??
+        input.category ??
+        DEFAULT_CATEGORY
+
+      if (previous && !previous.items.some((i) => i.key === key)) {
+        const optimistic: ShoppingItem = {
+          key,
+          name,
+          unit: null,
+          quantity: null,
+          hasUnquantified: true,
+          sources: [],
+          category,
+          checked: false,
+        }
+        queryClient.setQueryData<ShoppingList>(shoppingKey, {
+          ...previous,
+          items: [...previous.items, optimistic],
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, _input, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(shoppingKey, ctx.previous)
+    },
+    onSettled: () => {
       invalidate()
       // A newly-typed ingredient is saved to the catalog — refresh it so
       // autocomplete picks it up.
-      queryClient.invalidateQueries({
-        queryKey: ingredientsQueryOptions().queryKey,
-      })
+      queryClient.invalidateQueries({ queryKey: ingredientsKey })
     },
   })
   const remove = useMutation({

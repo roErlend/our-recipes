@@ -1,8 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
 
-import { Button } from '@/components/ui/Button'
 import {
   DEFAULT_CATEGORY,
   INGREDIENT_CATEGORIES,
@@ -177,16 +175,12 @@ export function AddShoppingItem({
             ))}
           </select>
         )}
-
-        <Button type="submit" isDisabled={!trimmed}>
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">Legg til</span>
-        </Button>
       </div>
 
       {isNew && (
         <p className="text-xs text-stone-400">
-          Ny vare – lagres i kategorien «{category}» så autofullføring husker den.
+          Ny vare – trykk Enter for å legge til i kategorien «{category}» (lagres
+          så autofullføring husker den).
         </p>
       )}
     </form>
