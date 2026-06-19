@@ -131,22 +131,33 @@ function RecipeCard({
 }) {
   const inList = recipe.inShoppingList
   const canAdd = recipe.ingredientCount > 0
+  const thumbnail = recipe.uploadedImageUrl ?? recipe.imageUrl
   return (
     <li className="group relative flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <Link
           to="/recipes/$recipeId"
           params={{ recipeId: recipe.id }}
-          className="flex-1"
+          className="flex min-w-0 flex-1 items-start gap-3"
         >
-          <h2 className="font-semibold text-stone-900 group-hover:text-brand-700">
-            {recipe.title}
-          </h2>
-          {recipe.description && (
-            <p className="mt-1 line-clamp-2 text-sm text-stone-500">
-              {recipe.description}
-            </p>
+          {thumbnail && (
+            <img
+              src={thumbnail}
+              alt=""
+              loading="lazy"
+              className="h-14 w-14 shrink-0 rounded-lg object-cover"
+            />
           )}
+          <div className="min-w-0">
+            <h2 className="font-semibold text-stone-900 group-hover:text-brand-700">
+              {recipe.title}
+            </h2>
+            {recipe.description && (
+              <p className="mt-1 line-clamp-2 text-sm text-stone-500">
+                {recipe.description}
+              </p>
+            )}
+          </div>
         </Link>
         <button
           type="button"

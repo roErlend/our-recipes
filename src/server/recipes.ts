@@ -91,13 +91,33 @@ export const listRecipes = createServerFn({ method: 'GET' })
       recipesOnShoppingList(householdId),
     ])
 
-    return rows.map(({ ingredients, owner, ...r }) => ({
-      ...r,
-      ingredientCount: ingredients.length,
-      isOwner: r.ownerId === user.id,
-      ownerName: owner?.name || owner?.email || null,
-      inShoppingList: onList.has(r.id),
-    }))
+    // Which of these recipes have an uploaded image (id + updatedAt only — never
+    // the bytes) so the cards can show a thumbnail.
+    const ids = rows.map((r) => r.id)
+    const imgRows = ids.length
+      ? await db
+          .select({
+            recipeId: recipeImage.recipeId,
+            updatedAt: recipeImage.updatedAt,
+          })
+          .from(recipeImage)
+          .where(inArray(recipeImage.recipeId, ids))
+      : []
+    const imgByRecipe = new Map(imgRows.map((i) => [i.recipeId, i.updatedAt]))
+
+    return rows.map(({ ingredients, owner, ...r }) => {
+      const imgUpdated = imgByRecipe.get(r.id)
+      return {
+        ...r,
+        ingredientCount: ingredients.length,
+        isOwner: r.ownerId === user.id,
+        ownerName: owner?.name || owner?.email || null,
+        inShoppingList: onList.has(r.id),
+        uploadedImageUrl: imgUpdated
+          ? `/api/recipes/${r.id}/image?v=${imgUpdated.getTime()}`
+          : null,
+      }
+    })
   })
 
 export const getRecipe = createServerFn({ method: 'GET' })
