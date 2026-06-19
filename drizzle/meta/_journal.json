@@ -5,78 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1781780549913,
-      "tag": "0000_fixed_captain_flint",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1781787518488,
-      "tag": "0001_simple_amazoness",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1781787937865,
-      "tag": "0002_amusing_cammi",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1781787976806,
-      "tag": "0003_friendly_anthem",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1781788057879,
-      "tag": "0004_petite_marrow",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1781864602165,
-      "tag": "0005_aromatic_mandarin",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1781866504194,
-      "tag": "0006_handy_tempest",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1781874597127,
-      "tag": "0007_robust_thunderbolt",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1781875720720,
-      "tag": "0008_rich_millenium_guard",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1781877453907,
-      "tag": "0009_broken_riptide",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1781879891619,
-      "tag": "0010_ordinary_payback",
+      "when": 1781904565106,
+      "tag": "0000_baseline",
       "breakpoints": true
     }
   ]
