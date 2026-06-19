@@ -292,53 +292,6 @@ function RecipeDetailPage() {
         </div>
       )}
 
-      <section className="flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-        <div>
-          <h2 className="text-lg font-semibold text-stone-900">Vurderinger</h2>
-          <p className="text-sm text-stone-500">
-            Gi 1–10 stjerner. Alle i husholdningen teller med i snittet.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <span className="w-28 text-sm font-medium text-stone-700">
-            Din vurdering
-          </span>
-          <StarRating
-            value={recipe.myScore ?? 0}
-            onChange={(score) => ratingMutation.mutate(score)}
-            label="Din vurdering"
-          />
-          <span className="text-sm text-stone-400">
-            {recipe.myScore
-              ? `${recipe.myScore}/10 · trykk samme stjerne for å fjerne`
-              : 'Trykk for å gi poeng'}
-          </span>
-        </div>
-
-        {recipe.ratings.length > 0 && (
-          <ul className="flex flex-col gap-2 border-t border-stone-100 pt-3">
-            {recipe.ratings.map((r) => (
-              <li
-                key={r.userId}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1"
-              >
-                <span className="w-28 truncate text-sm text-stone-700">
-                  {r.name}
-                  {r.isMe && (
-                    <span className="ml-1 text-xs text-stone-400">(deg)</span>
-                  )}
-                </span>
-                <StarRating value={r.score} size="sm" />
-                <span className="text-sm font-medium text-stone-500">
-                  {r.score}/10
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
       <div
         className={
           recipe.ingredients.length > 0
@@ -393,6 +346,53 @@ function RecipeDetailPage() {
           )
         )}
       </div>
+
+      <section className="flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-lg font-semibold text-stone-900">Vurderinger</h2>
+          <p className="text-sm text-stone-500">
+            Gi 1–10 stjerner. Alle i husholdningen teller med i snittet.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span className="w-28 text-sm font-medium text-stone-700">
+            Din vurdering
+          </span>
+          <StarRating
+            value={recipe.myScore ?? 0}
+            onChange={(score) => ratingMutation.mutate(score)}
+            label="Din vurdering"
+          />
+          <span className="text-sm text-stone-400">
+            {recipe.myScore
+              ? `${recipe.myScore}/10 · trykk samme stjerne for å fjerne`
+              : 'Trykk for å gi poeng'}
+          </span>
+        </div>
+
+        {recipe.ratings.length > 0 && (
+          <ul className="flex flex-col gap-2 border-t border-stone-100 pt-3">
+            {recipe.ratings.map((r) => (
+              <li
+                key={r.userId}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1"
+              >
+                <span className="w-28 truncate text-sm text-stone-700">
+                  {r.name}
+                  {r.isMe && (
+                    <span className="ml-1 text-xs text-stone-400">(deg)</span>
+                  )}
+                </span>
+                <StarRating value={r.score} size="sm" />
+                <span className="text-sm font-medium text-stone-500">
+                  {r.score}/10
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </article>
   )
 }
