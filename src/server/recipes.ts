@@ -1,5 +1,15 @@
 import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
-import { and, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm'
+import {
+  and,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNotNull,
+  notExists,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '@/db'
@@ -8,6 +18,7 @@ import {
   recipe,
   recipeImage,
   recipeRating,
+  shoppingCheck,
   shoppingEntry,
   user as userTable,
 } from '@/db/schema'
@@ -31,7 +42,12 @@ const ratingAggregates = createServerOnlyFn(async (recipeIds: string[]) => {
   )
 })
 
-/** Recipe ids in the household that currently have items on the shopping list. */
+/**
+ * Recipe ids in the household that still have something left to buy on the
+ * shopping list — i.e. at least one contributed item that isn't ticked off.
+ * Once every item a recipe added is checked, it drops out of this set so its
+ * "Legg til handleliste" toggle flips back to unchecked.
+ */
 const recipesOnShoppingList = createServerOnlyFn(async (householdId: string) => {
   const rows = await db
     .selectDistinct({ id: shoppingEntry.sourceRecipeId })
@@ -40,6 +56,18 @@ const recipesOnShoppingList = createServerOnlyFn(async (householdId: string) => 
       and(
         eq(shoppingEntry.scopeId, householdId),
         isNotNull(shoppingEntry.sourceRecipeId),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(shoppingCheck)
+            .where(
+              and(
+                eq(shoppingCheck.scopeId, shoppingEntry.scopeId),
+                eq(shoppingCheck.itemKey, shoppingEntry.itemKey),
+                eq(shoppingCheck.checked, true),
+              ),
+            ),
+        ),
       ),
     )
   return new Set(rows.map((r) => r.id))

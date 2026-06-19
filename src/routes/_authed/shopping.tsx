@@ -180,6 +180,7 @@ function ShoppingPage() {
 }
 
 function RealtimeShoppingList({ list }: { list: ShoppingList }) {
+  const queryClient = useQueryClient()
   const { data: checkRows } = useLiveQuery((q) =>
     q.from({ c: shoppingChecksCollection }),
   )
@@ -198,6 +199,13 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
         item_key: item.key,
         checked,
       })
+    }
+    // A recipe counts as "on the list" only while it has an unchecked item, so a
+    // toggle can flip a recipe's cart button — mark the recipe queries stale so
+    // the overview/detail reflect it on next view.
+    if (item.sources.length > 0) {
+      queryClient.invalidateQueries({ queryKey: ['recipes'] })
+      queryClient.invalidateQueries({ queryKey: ['recipe'] })
     }
   }
 
