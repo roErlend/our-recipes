@@ -65,9 +65,14 @@ function AuthedLayout() {
             Våre oppskrifter
           </Link>
 
+          {/* preload="render" warms each section's code + data in the
+              background right after the nav mounts, so switching between the
+              three pages is instant once warmed (helps most on slow/distant
+              hosting where on-hover intent preload doesn't finish in time). */}
           <nav className="flex items-center gap-1">
             <Link
               to="/recipes"
+              preload="render"
               className={navLinkClass}
               activeProps={{ className: `${navLinkClass} ${activeNavLinkClass}` }}
               activeOptions={{ exact: false }}
@@ -77,6 +82,7 @@ function AuthedLayout() {
             </Link>
             <Link
               to="/shopping"
+              preload="render"
               className={navLinkClass}
               activeProps={{ className: `${navLinkClass} ${activeNavLinkClass}` }}
             >
@@ -85,6 +91,7 @@ function AuthedLayout() {
             </Link>
             <Link
               to="/deling"
+              preload="render"
               className={navLinkClass}
               activeProps={{ className: `${navLinkClass} ${activeNavLinkClass}` }}
             >
