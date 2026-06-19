@@ -175,9 +175,14 @@ function AddRow({
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
         maxLength={maxLength}
-        className="flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+        className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
       />
-      <Button type="submit" size="sm" isDisabled={!value.trim() || busy}>
+      <Button
+        type="submit"
+        size="sm"
+        isDisabled={!value.trim() || busy}
+        className="shrink-0"
+      >
         <Plus className="h-4 w-4" />
         {buttonLabel}
       </Button>
@@ -382,7 +387,7 @@ function NewIngredientForm({
   return (
     <form
       onSubmit={submit}
-      className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-stone-300 bg-white/50 p-3"
+      className="flex flex-col gap-2 rounded-2xl border border-dashed border-stone-300 bg-white/50 p-3 sm:flex-row sm:flex-wrap sm:items-center"
     >
       <input
         value={name}
@@ -390,13 +395,13 @@ function NewIngredientForm({
         placeholder="Ny ingrediens (standard)…"
         maxLength={200}
         aria-label="Navn på ny ingrediens"
-        className="min-w-0 flex-1 rounded-lg border border-stone-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+        className="w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:min-w-0 sm:flex-1"
       />
       <select
         value={category}
         onChange={(e) => setCategory(e.target.value)}
         aria-label="Kategori for ny ingrediens"
-        className="w-44 rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-sm text-stone-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+        className="w-full rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-sm text-stone-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:w-44"
       >
         {categories.map((c) => (
           <option key={c} value={c}>
@@ -404,7 +409,12 @@ function NewIngredientForm({
           </option>
         ))}
       </select>
-      <Button type="submit" size="sm" isDisabled={!canAdd || busy}>
+      <Button
+        type="submit"
+        size="sm"
+        isDisabled={!canAdd || busy}
+        className="w-full shrink-0 sm:w-auto"
+      >
         <Plus className="h-4 w-4" />
         Legg til
       </Button>
@@ -431,47 +441,49 @@ function IngredientRow({
   const canSave = dirty && name.trim() !== '' && category.trim() !== ''
 
   return (
-    <li className="flex flex-wrap items-center gap-2 border-b border-stone-100 px-4 py-3 last:border-0">
+    <li className="flex flex-col gap-2 border-b border-stone-100 px-4 py-3 last:border-0 sm:flex-row sm:flex-wrap sm:items-center">
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
         maxLength={200}
         aria-label={`Navn på ${ingredient.name}`}
-        className="min-w-0 flex-1 rounded-lg border border-stone-300 px-2 py-1 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+        className="w-full rounded-lg border border-stone-300 px-2 py-1 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:min-w-0 sm:flex-1"
       />
-      <input
-        list="admin-categories"
-        value={category}
-        onChange={(e) => setCategory(e.target.value)}
-        maxLength={60}
-        aria-label={`Kategori for ${ingredient.name}`}
-        className="w-44 rounded-lg border border-stone-300 px-2 py-1 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
-      />
-      {ingredient.isStock ? (
-        <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
-          standard
-        </span>
-      ) : (
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
-          egen
-        </span>
-      )}
-      <IconButton
-        label={`Lagre ${ingredient.name}`}
-        onClick={() => onSave(name.trim(), category.trim())}
-        disabled={!canSave || busy}
-        tone="brand"
-      >
-        <Check className="h-4 w-4" />
-      </IconButton>
-      <IconButton
-        label={`Slett ${ingredient.name}`}
-        onClick={onDelete}
-        disabled={busy}
-        tone="danger"
-      >
-        <Trash2 className="h-4 w-4" />
-      </IconButton>
+      <div className="flex items-center gap-2">
+        <input
+          list="admin-categories"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          maxLength={60}
+          aria-label={`Kategori for ${ingredient.name}`}
+          className="min-w-0 flex-1 rounded-lg border border-stone-300 px-2 py-1 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:w-44 sm:flex-none"
+        />
+        {ingredient.isStock ? (
+          <span className="shrink-0 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
+            standard
+          </span>
+        ) : (
+          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+            egen
+          </span>
+        )}
+        <IconButton
+          label={`Lagre ${ingredient.name}`}
+          onClick={() => onSave(name.trim(), category.trim())}
+          disabled={!canSave || busy}
+          tone="brand"
+        >
+          <Check className="h-4 w-4" />
+        </IconButton>
+        <IconButton
+          label={`Slett ${ingredient.name}`}
+          onClick={onDelete}
+          disabled={busy}
+          tone="danger"
+        >
+          <Trash2 className="h-4 w-4" />
+        </IconButton>
+      </div>
     </li>
   )
 }

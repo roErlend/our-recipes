@@ -6,7 +6,7 @@ import { tv, type VariantProps } from 'tailwind-variants'
 
 export const button = tv({
   base: [
-    'inline-flex items-center justify-center gap-2 rounded-lg font-medium',
+    'inline-flex items-center justify-center gap-2 rounded-lg font-medium whitespace-nowrap',
     'cursor-pointer transition-colors select-none',
     'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
     'outline-none data-[focus-visible]:outline-2 data-[focus-visible]:outline-offset-2 data-[focus-visible]:outline-brand-500',
