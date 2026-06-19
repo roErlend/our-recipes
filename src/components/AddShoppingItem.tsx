@@ -44,11 +44,18 @@ export function AddShoppingItem({
   const exact = suggestions.find((s) => s.key === key)
   const isNew = trimmed !== '' && !exact
 
-  const choose = (s: CatalogIngredient) => {
-    setValue(s.name)
-    setCategory(s.category)
+  const reset = () => {
+    setValue('')
+    setCategory(DEFAULT_CATEGORY)
     setOpen(false)
     setActive(-1)
+  }
+
+  // Selecting a suggestion adds it straight away (one action) — the catalog
+  // already knows its category, so there's nothing more to confirm.
+  const choose = (s: CatalogIngredient) => {
+    onAdd({ name: s.name })
+    reset()
   }
 
   const submit = () => {
@@ -57,15 +64,8 @@ export function AddShoppingItem({
     // Reuse the catalog entry's display name/category when it's a known
     // ingredient; otherwise save the typed name under the chosen category.
     const match = catalog.find((c) => c.key === norm(name))
-    onAdd(
-      match
-        ? { name: match.name }
-        : { name, category },
-    )
-    setValue('')
-    setCategory(DEFAULT_CATEGORY)
-    setOpen(false)
-    setActive(-1)
+    onAdd(match ? { name: match.name } : { name, category })
+    reset()
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
