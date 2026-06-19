@@ -23,12 +23,23 @@ const shoppingCheckRow = z.object({
 
 export type ShoppingCheckRow = z.infer<typeof shoppingCheckRow>
 
+/**
+ * Electric's ShapeStream does `new URL(url)` with no base, so it needs an
+ * absolute URL. Sync only ever starts in the browser (the live query is gated
+ * behind a mount check), so the SSR placeholder is never actually fetched — it
+ * just has to parse.
+ */
+const SHAPE_URL =
+  typeof window === 'undefined'
+    ? 'http://localhost/api/shapes/shopping'
+    : `${window.location.origin}/api/shapes/shopping`
+
 export const shoppingChecksCollection = createCollection(
   electricCollectionOptions({
     id: 'shopping-checks',
     shapeOptions: {
       // Our auth proxy — it adds the table, household `where` and credentials.
-      url: '/api/shapes/shopping',
+      url: SHAPE_URL,
     },
     schema: shoppingCheckRow,
     getKey: (row) => row.item_key,
