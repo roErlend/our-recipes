@@ -135,7 +135,6 @@ export const listRecipes = createServerFn({ method: 'GET' })
     const mapped = rows.map(({ ingredients, owner, ...r }) => {
       const imgUpdated = imgByRecipe.get(r.id)
       const agg = ratings.get(r.id)
-      const ratingSum = agg?.sum ?? 0
       const ratingCount = agg?.count ?? 0
       return {
         ...r,
@@ -146,18 +145,17 @@ export const listRecipes = createServerFn({ method: 'GET' })
         uploadedImageUrl: imgUpdated
           ? `/api/recipes/${r.id}/image?v=${imgUpdated.getTime()}`
           : null,
-        ratingSum,
         ratingCount,
-        ratingAvg: ratingCount ? ratingSum / ratingCount : 0,
+        ratingAvg: ratingCount ? (agg?.sum ?? 0) / ratingCount : 0,
       }
     })
 
-    // Default ordering: highest aggregate rating first, then most recently
+    // Default ordering: highest average rating first, then most recently
     // updated (rows already arrive in updatedAt-desc order, so the sort is a
-    // stable refinement). Unrated recipes (sum 0) fall to the bottom by recency.
+    // stable refinement). Unrated recipes (avg 0) fall to the bottom by recency.
     return mapped.sort(
       (a, b) =>
-        b.ratingSum - a.ratingSum ||
+        b.ratingAvg - a.ratingAvg ||
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     )
   })
@@ -203,8 +201,8 @@ export const getRecipe = createServerFn({ method: 'GET' })
       score: r.score,
       isMe: r.userId === user.id,
     }))
-    const ratingSum = ratings.reduce((s, r) => s + r.score, 0)
     const ratingCount = ratings.length
+    const ratingTotal = ratings.reduce((s, r) => s + r.score, 0)
 
     const { owner, ...rest } = row
     return {
@@ -218,9 +216,8 @@ export const getRecipe = createServerFn({ method: 'GET' })
         ? `/api/recipes/${id}/image?v=${img.updatedAt.getTime()}`
         : null,
       ratings,
-      ratingSum,
       ratingCount,
-      ratingAvg: ratingCount ? ratingSum / ratingCount : 0,
+      ratingAvg: ratingCount ? ratingTotal / ratingCount : 0,
       myScore: ratings.find((r) => r.isMe)?.score ?? null,
     }
   })

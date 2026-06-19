@@ -161,16 +161,13 @@ function RecipeDetailPage() {
                 {recipe.title}
               </h1>
               {recipe.ratingCount > 0 ? (
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-amber-700 ring-1 ring-amber-200"
-                  title={`Sum ${recipe.ratingSum} · snitt ${formatAvg(recipe.ratingAvg)} av 10 · ${recipe.ratingCount} ${recipe.ratingCount === 1 ? 'stemme' : 'stemmer'}`}
-                >
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-amber-700 ring-1 ring-amber-200">
                   <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
                   <span className="text-lg font-bold leading-none">
-                    {recipe.ratingSum}
+                    {formatAvg(recipe.ratingAvg)}
                   </span>
                   <span className="text-xs text-amber-600">
-                    snitt {formatAvg(recipe.ratingAvg)} · {recipe.ratingCount}{' '}
+                    av 10 · {recipe.ratingCount}{' '}
                     {recipe.ratingCount === 1 ? 'stemme' : 'stemmer'}
                   </span>
                 </span>
