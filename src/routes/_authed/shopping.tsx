@@ -1,14 +1,24 @@
 import { useEffect, useState } from 'react'
 import { useLiveQuery } from '@tanstack/react-db'
-import { useSuspenseQuery } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ListChecks, RotateCcw, ShoppingCart } from 'lucide-react'
+import { ListChecks, Plus, ShoppingCart, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { shoppingQueryOptions } from '@/lib/queries'
 import { shoppingChecksCollection } from '@/lib/shopping-collection'
-import { type ShoppingItem, type ShoppingList } from '@/server/shopping'
+import {
+  addManualItem,
+  removeCheckedItems,
+  removeShoppingItem,
+  type ShoppingItem,
+  type ShoppingList,
+} from '@/server/shopping'
 
 export const Route = createFileRoute('/_authed/shopping')({
   loader: ({ context }) =>
@@ -44,39 +54,38 @@ function useMounted() {
   return mounted
 }
 
+/** Add/remove mutations for the persisted list — kept on TanStack Query (the
+ *  realtime checkbox sync is separate, via the Electric collection below). */
+function useShoppingMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
+
+  const add = useMutation({
+    mutationFn: (name: string) => addManualItem({ data: { name } }),
+    onSuccess: invalidate,
+  })
+  const remove = useMutation({
+    mutationFn: (key: string) => removeShoppingItem({ data: { key } }),
+    onSuccess: invalidate,
+  })
+  const removeChecked = useMutation({
+    mutationFn: () => removeCheckedItems(),
+    onSuccess: invalidate,
+  })
+  return { add, remove, removeChecked }
+}
+
 function ShoppingPage() {
   const { data } = useSuspenseQuery(shoppingQueryOptions())
   const mounted = useMounted()
 
-  if (data.recipes.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-stone-300 bg-white/50 py-16 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-100 text-brand-600">
-          <ShoppingCart className="h-6 w-6" />
-        </div>
-        <p className="max-w-sm text-stone-600">
-          Ingen oppskrifter er merket som aktive denne uken. Merk noen
-          oppskrifter som <strong>aktive</strong>, så blir de til en handleliste
-          her.
-        </p>
-        <Link to="/recipes">
-          <Button>Se oppskrifter</Button>
-        </Link>
-      </div>
-    )
-  }
-
   // Before mount we render from the server's snapshot (no live query); once
-  // mounted the realtime collection takes over and syncs across devices.
+  // mounted the realtime collection takes over and syncs checks across devices.
   return mounted ? (
     <RealtimeShoppingList list={data} />
   ) : (
-    <ShoppingView
-      list={data}
-      isChecked={(item) => item.checked}
-      onToggle={() => {}}
-      onReset={() => {}}
-    />
+    <ShoppingView list={data} isChecked={(item) => item.checked} onToggle={() => {}} />
   )
 }
 
@@ -102,13 +111,34 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
     }
   }
 
-  const reset = () => {
-    const keys = [...checkedByKey.keys()]
-    if (keys.length) shoppingChecksCollection.delete(keys)
+  return <ShoppingView list={list} isChecked={isChecked} onToggle={toggle} />
+}
+
+function AddItemForm({ onAdd }: { onAdd: (name: string) => void }) {
+  const [value, setValue] = useState('')
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const name = value.trim()
+    if (!name) return
+    onAdd(name)
+    setValue('')
   }
 
   return (
-    <ShoppingView list={list} isChecked={isChecked} onToggle={toggle} onReset={reset} />
+    <form onSubmit={submit} className="flex items-center gap-2">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Legg til en vare…"
+        aria-label="Legg til en vare på handlelisten"
+        className="flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+      />
+      <Button type="submit" isDisabled={!value.trim()}>
+        <Plus className="h-4 w-4" />
+        <span className="hidden sm:inline">Legg til</span>
+      </Button>
+    </form>
   )
 }
 
@@ -116,16 +146,16 @@ function ShoppingView({
   list,
   isChecked,
   onToggle,
-  onReset,
 }: {
   list: ShoppingList
   isChecked: (item: ShoppingItem) => boolean
   onToggle: (item: ShoppingItem, checked: boolean) => void
-  onReset: () => void
 }) {
   const { recipes, items } = list
+  const { add, remove, removeChecked } = useShoppingMutations()
   const sorted = sortItems(items, isChecked)
   const remaining = items.filter((i) => !isChecked(i)).length
+  const checkedCount = items.length - remaining
 
   return (
     <div className="flex flex-col gap-6">
@@ -133,32 +163,55 @@ function ShoppingView({
         <div>
           <h1 className="text-2xl font-bold text-stone-900">Handleliste</h1>
           <p className="text-sm text-stone-500">
-            {remaining} {remaining === 1 ? 'vare' : 'varer'} igjen · fra{' '}
-            {recipes.length}{' '}
-            {recipes.length === 1 ? 'aktiv oppskrift' : 'aktive oppskrifter'}
+            {remaining} {remaining === 1 ? 'vare' : 'varer'} igjen
+            {recipes.length > 0 && (
+              <>
+                {' '}
+                · fra {recipes.length}{' '}
+                {recipes.length === 1 ? 'oppskrift' : 'oppskrifter'}
+              </>
+            )}
           </p>
         </div>
-        <Button variant="secondary" size="sm" onPress={onReset}>
-          <RotateCcw className="h-4 w-4" />
-          Nullstill avhuking
+        <Button
+          variant="secondary"
+          size="sm"
+          onPress={() => removeChecked.mutate()}
+          isDisabled={checkedCount === 0 || removeChecked.isPending}
+        >
+          <Trash2 className="h-4 w-4" />
+          Fjern avhukede
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {recipes.map((r) => (
-          <Link key={r.id} to="/recipes/$recipeId" params={{ recipeId: r.id }}>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-sm text-stone-700 shadow-sm ring-1 ring-stone-200 hover:ring-brand-300">
-              <ListChecks className="h-3.5 w-3.5 text-brand-600" />
-              {r.title}
-            </span>
-          </Link>
-        ))}
-      </div>
+      <AddItemForm onAdd={(name) => add.mutate(name)} />
+
+      {recipes.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {recipes.map((r) => (
+            <Link key={r.id} to="/recipes/$recipeId" params={{ recipeId: r.id }}>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-sm text-stone-700 shadow-sm ring-1 ring-stone-200 hover:ring-brand-300">
+                <ListChecks className="h-3.5 w-3.5 text-brand-600" />
+                {r.title}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
 
       {items.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-stone-300 bg-white/50 py-12 text-center text-stone-500">
-          De aktive oppskriftene dine har ingen ingredienser ennå.
-        </p>
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-stone-300 bg-white/50 py-16 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-100 text-brand-600">
+            <ShoppingCart className="h-6 w-6" />
+          </div>
+          <p className="max-w-sm text-stone-600">
+            Handlelisten er tom. Legg til varer over, eller åpne en oppskrift og
+            trykk <strong>Legg til handleliste</strong>.
+          </p>
+          <Link to="/recipes">
+            <Button variant="secondary">Se oppskrifter</Button>
+          </Link>
+        </div>
       ) : (
         <ul className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
           {sorted.map((item) => {
@@ -175,7 +228,7 @@ function ShoppingView({
                   aria-label={`Merk ${item.name} som kjøpt`}
                   className="-m-2 p-2"
                 />
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <span
                     className={
                       checked
@@ -185,9 +238,11 @@ function ShoppingView({
                   >
                     {item.name}
                   </span>
-                  <span className="ml-2 text-sm text-stone-400">
-                    {item.sources.join(', ')}
-                  </span>
+                  {item.sources.length > 0 && (
+                    <span className="ml-2 text-sm text-stone-400">
+                      {item.sources.join(', ')}
+                    </span>
+                  )}
                 </div>
                 {amount && (
                   <span
@@ -200,6 +255,14 @@ function ShoppingView({
                     {amount}
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => remove.mutate(item.key)}
+                  aria-label={`Fjern ${item.name} fra listen`}
+                  className="-m-2 shrink-0 rounded-full p-2 text-stone-300 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </li>
             )
           })}

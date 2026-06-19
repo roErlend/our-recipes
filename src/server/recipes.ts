@@ -1,11 +1,25 @@
 import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
-import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '@/db'
-import { ingredient, recipe } from '@/db/schema'
+import { ingredient, recipe, shoppingEntry } from '@/db/schema'
 import { requireUser } from '@/server/auth'
 import { accessibleScope } from '@/server/sharing'
+
+/** Recipe ids in the household that currently have items on the shopping list. */
+const recipesOnShoppingList = createServerOnlyFn(async (householdId: string) => {
+  const rows = await db
+    .selectDistinct({ id: shoppingEntry.sourceRecipeId })
+    .from(shoppingEntry)
+    .where(
+      and(
+        eq(shoppingEntry.scopeId, householdId),
+        isNotNull(shoppingEntry.sourceRecipeId),
+      ),
+    )
+  return new Set(rows.map((r) => r.id))
+})
 
 /* ----------------------------- validation ------------------------------ */
 
@@ -38,17 +52,13 @@ const emptyToNull = (v: string | null | undefined) =>
 /* ------------------------------- queries -------------------------------- */
 
 export const listRecipes = createServerFn({ method: 'GET' })
-  .validator(
-    (input: { search?: string; activeOnly?: boolean } | undefined) =>
-      input ?? {},
-  )
+  .validator((input: { search?: string } | undefined) => input ?? {})
   .handler(async ({ data }) => {
     const user = await requireUser()
-    const { ownerIds } = await accessibleScope(user.id)
+    const { householdId, ownerIds } = await accessibleScope(user.id)
     const term = data.search?.trim()
 
     const conditions = [inArray(recipe.ownerId, ownerIds)]
-    if (data.activeOnly) conditions.push(eq(recipe.isActive, true))
     if (term) {
       const like = `%${term}%`
       conditions.push(
@@ -60,20 +70,24 @@ export const listRecipes = createServerFn({ method: 'GET' })
       )
     }
 
-    const rows = await db.query.recipe.findMany({
-      where: and(...conditions),
-      orderBy: [desc(recipe.isActive), desc(recipe.updatedAt)],
-      with: {
-        ingredients: { columns: { id: true } },
-        owner: { columns: { name: true, email: true } },
-      },
-    })
+    const [rows, onList] = await Promise.all([
+      db.query.recipe.findMany({
+        where: and(...conditions),
+        orderBy: [desc(recipe.updatedAt)],
+        with: {
+          ingredients: { columns: { id: true } },
+          owner: { columns: { name: true, email: true } },
+        },
+      }),
+      recipesOnShoppingList(householdId),
+    ])
 
     return rows.map(({ ingredients, owner, ...r }) => ({
       ...r,
       ingredientCount: ingredients.length,
       isOwner: r.ownerId === user.id,
       ownerName: owner?.name || owner?.email || null,
+      inShoppingList: onList.has(r.id),
     }))
   })
 
@@ -81,7 +95,7 @@ export const getRecipe = createServerFn({ method: 'GET' })
   .validator((id: string) => z.string().min(1).parse(id))
   .handler(async ({ data: id }) => {
     const user = await requireUser()
-    const { ownerIds } = await accessibleScope(user.id)
+    const { householdId, ownerIds } = await accessibleScope(user.id)
     const row = await db.query.recipe.findFirst({
       where: eq(recipe.id, id),
       with: {
@@ -92,11 +106,13 @@ export const getRecipe = createServerFn({ method: 'GET' })
       },
     })
     if (!row || !ownerIds.includes(row.ownerId)) return null
+    const onList = await recipesOnShoppingList(householdId)
     const { owner, ...rest } = row
     return {
       ...rest,
       isOwner: row.ownerId === user.id,
       ownerName: owner?.name || owner?.email || null,
+      inShoppingList: onList.has(row.id),
     }
   })
 
@@ -188,20 +204,6 @@ export const updateRecipe = createServerFn({ method: 'POST' })
     })
 
     return { id }
-  })
-
-export const setRecipeActive = createServerFn({ method: 'POST' })
-  .validator((input: { id: string; isActive: boolean }) =>
-    z.object({ id: z.string().min(1), isActive: z.boolean() }).parse(input),
-  )
-  .handler(async ({ data }) => {
-    const user = await requireUser()
-    await assertCanAdminister(user.id, data.id)
-    await db
-      .update(recipe)
-      .set({ isActive: data.isActive, updatedAt: new Date() })
-      .where(eq(recipe.id, data.id))
-    return { id: data.id, isActive: data.isActive }
   })
 
 export const deleteRecipe = createServerFn({ method: 'POST' })

@@ -5,12 +5,23 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ExternalLink, Plus, Search, Users, UtensilsCrossed } from 'lucide-react'
+import {
+  Check,
+  ExternalLink,
+  Plus,
+  Search,
+  ShoppingCart,
+  Users,
+  UtensilsCrossed,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
-import { Checkbox } from '@/components/ui/Checkbox'
 import { recipesQueryOptions, shoppingQueryOptions } from '@/lib/queries'
-import { type RecipeListItem, setRecipeActive } from '@/server/recipes'
+import { type RecipeListItem } from '@/server/recipes'
+import {
+  addRecipeToShopping,
+  removeRecipeFromShopping,
+} from '@/server/shopping'
 
 export const Route = createFileRoute('/_authed/recipes/')({
   loader: ({ context }) =>
@@ -22,35 +33,36 @@ function RecipesPage() {
   const queryClient = useQueryClient()
   const { data: recipes } = useSuspenseQuery(recipesQueryOptions())
   const [search, setSearch] = useState('')
-  const [activeOnly, setActiveOnly] = useState(false)
 
   const recipesKey = recipesQueryOptions().queryKey
 
-  const activeCount = recipes.filter((r) => r.isActive).length
+  const onListCount = recipes.filter((r) => r.inShoppingList).length
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return recipes.filter((r) => {
-      if (activeOnly && !r.isActive) return false
-      if (!term) return true
-      return (
+    if (!term) return recipes
+    return recipes.filter(
+      (r) =>
         r.title.toLowerCase().includes(term) ||
         (r.description?.toLowerCase().includes(term) ?? false) ||
-        r.tags.some((t) => t.toLowerCase().includes(term))
-      )
-    })
-  }, [recipes, search, activeOnly])
+        r.tags.some((t) => t.toLowerCase().includes(term)),
+    )
+  }, [recipes, search])
 
-  const activeMutation = useMutation({
-    mutationFn: (vars: { id: string; isActive: boolean }) =>
-      setRecipeActive({ data: vars }),
-    onMutate: async ({ id, isActive }) => {
+  const shoppingMutation = useMutation({
+    mutationFn: (vars: { id: string; inList: boolean }) =>
+      vars.inList
+        ? addRecipeToShopping({ data: { recipeId: vars.id } })
+        : removeRecipeFromShopping({ data: { recipeId: vars.id } }),
+    onMutate: async ({ id, inList }) => {
       await queryClient.cancelQueries({ queryKey: recipesKey })
       const previous = queryClient.getQueryData<RecipeListItem[]>(recipesKey)
       if (previous) {
         queryClient.setQueryData<RecipeListItem[]>(
           recipesKey,
-          previous.map((r) => (r.id === id ? { ...r, isActive } : r)),
+          previous.map((r) =>
+            r.id === id ? { ...r, inShoppingList: inList } : r,
+          ),
         )
       }
       return { previous }
@@ -59,13 +71,12 @@ function RecipesPage() {
       if (ctx?.previous) queryClient.setQueryData(recipesKey, ctx.previous)
     },
     onSettled: () => {
-      // The shopping list is derived from active recipes — refresh it.
       queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
     },
   })
 
-  const toggleActive = (id: string, isActive: boolean) =>
-    activeMutation.mutate({ id, isActive })
+  const toggleShopping = (id: string, inList: boolean) =>
+    shoppingMutation.mutate({ id, inList })
 
   return (
     <div className="flex flex-col gap-6">
@@ -73,7 +84,7 @@ function RecipesPage() {
         <div>
           <h1 className="text-2xl font-bold text-stone-900">Oppskrifter</h1>
           <p className="text-sm text-stone-500">
-            {recipes.length} lagret · {activeCount} aktive denne uken
+            {recipes.length} lagret · {onListCount} på handlelisten
           </p>
         </div>
         <Link to="/recipes/new">
@@ -84,22 +95,14 @@ function RecipesPage() {
         </Link>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[16rem]">
-          <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-stone-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Søk på tittel, beskrivelse eller etikett…"
-            className="w-full rounded-lg border border-stone-300 bg-white py-2 pr-3 pl-9 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
-          />
-        </div>
-        <Button
-          variant={activeOnly ? 'primary' : 'secondary'}
-          onPress={() => setActiveOnly((v) => !v)}
-        >
-          Kun aktive
-        </Button>
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-stone-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Søk på tittel, beskrivelse eller etikett…"
+          className="w-full rounded-lg border border-stone-300 bg-white py-2 pr-3 pl-9 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+        />
       </div>
 
       {filtered.length === 0 ? (
@@ -110,7 +113,7 @@ function RecipesPage() {
             <RecipeCard
               key={recipe.id}
               recipe={recipe}
-              onToggleActive={toggleActive}
+              onToggleShopping={toggleShopping}
             />
           ))}
         </ul>
@@ -121,11 +124,13 @@ function RecipesPage() {
 
 function RecipeCard({
   recipe,
-  onToggleActive,
+  onToggleShopping,
 }: {
   recipe: RecipeListItem
-  onToggleActive: (id: string, isActive: boolean) => void
+  onToggleShopping: (id: string, inList: boolean) => void
 }) {
+  const inList = recipe.inShoppingList
+  const canAdd = recipe.ingredientCount > 0
   return (
     <li className="group relative flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
@@ -143,13 +148,37 @@ function RecipeCard({
             </p>
           )}
         </Link>
-        <Checkbox
-          isSelected={recipe.isActive}
-          onChange={(checked) => onToggleActive(recipe.id, checked)}
-          aria-label={`Merk ${recipe.title} som aktiv denne uken`}
-          // Bigger touch target on mobile without shifting the layout.
-          className="-m-2 p-2"
-        />
+        <button
+          type="button"
+          disabled={!canAdd}
+          onClick={() => onToggleShopping(recipe.id, !inList)}
+          aria-label={
+            inList
+              ? `Fjern ${recipe.title} fra handlelisten`
+              : `Legg ${recipe.title} til handlelisten`
+          }
+          title={
+            canAdd
+              ? inList
+                ? 'På handlelisten – trykk for å fjerne'
+                : 'Legg til handlelisten'
+              : 'Ingen ingredienser å legge til'
+          }
+          className={[
+            'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors',
+            !canAdd
+              ? 'cursor-not-allowed text-stone-300'
+              : inList
+                ? 'bg-brand-600 text-white hover:bg-brand-700'
+                : 'text-stone-400 hover:bg-stone-100 hover:text-brand-700',
+          ].join(' ')}
+        >
+          {inList ? (
+            <Check className="h-5 w-5" />
+          ) : (
+            <ShoppingCart className="h-5 w-5" />
+          )}
+        </button>
       </div>
 
       <div className="mt-auto flex flex-wrap items-center gap-2 text-xs text-stone-500">

@@ -6,25 +6,26 @@ import {
 } from '@tanstack/react-query'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import {
+  Check,
   ChevronLeft,
   ExternalLink,
   Pencil,
+  ShoppingCart,
   Trash2,
   Users,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
-import { Checkbox } from '@/components/ui/Checkbox'
 import {
   recipeQueryOptions,
   recipesQueryOptions,
   shoppingQueryOptions,
 } from '@/lib/queries'
+import { type RecipeDetail, deleteRecipe } from '@/server/recipes'
 import {
-  type RecipeDetail,
-  deleteRecipe,
-  setRecipeActive,
-} from '@/server/recipes'
+  addRecipeToShopping,
+  removeRecipeFromShopping,
+} from '@/server/shopping'
 
 export const Route = createFileRoute('/_authed/recipes/$recipeId')({
   loader: ({ context, params }) =>
@@ -47,16 +48,18 @@ function RecipeDetailPage() {
 
   const recipeKey = recipeQueryOptions(recipeId).queryKey
 
-  const activeMutation = useMutation({
-    mutationFn: (checked: boolean) =>
-      setRecipeActive({ data: { id: recipeId, isActive: checked } }),
-    onMutate: async (checked) => {
+  const shoppingMutation = useMutation({
+    mutationFn: (inList: boolean) =>
+      inList
+        ? addRecipeToShopping({ data: { recipeId } })
+        : removeRecipeFromShopping({ data: { recipeId } }),
+    onMutate: async (inList) => {
       await queryClient.cancelQueries({ queryKey: recipeKey })
       const previous = queryClient.getQueryData<RecipeDetail | null>(recipeKey)
       if (previous) {
         queryClient.setQueryData<RecipeDetail>(recipeKey, {
           ...previous,
-          isActive: checked,
+          inShoppingList: inList,
         })
       }
       return { previous }
@@ -94,7 +97,7 @@ function RecipeDetailPage() {
     )
   }
 
-  const toggleActive = (checked: boolean) => activeMutation.mutate(checked)
+  const toggleShopping = () => shoppingMutation.mutate(!recipe.inShoppingList)
   const handleDelete = () => deleteMutation.mutate()
   const deleting = deleteMutation.isPending
 
@@ -149,11 +152,25 @@ function RecipeDetailPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <label className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 shadow-sm">
-            <Checkbox isSelected={recipe.isActive} onChange={toggleActive}>
-              Aktiv denne uken
-            </Checkbox>
-          </label>
+          {recipe.ingredients.length > 0 ? (
+            <Button
+              variant={recipe.inShoppingList ? 'secondary' : 'primary'}
+              onPress={toggleShopping}
+              isDisabled={shoppingMutation.isPending}
+            >
+              {recipe.inShoppingList ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  På handlelisten
+                </>
+              ) : (
+                <>
+                  <ShoppingCart className="h-4 w-4" />
+                  Legg til handleliste
+                </>
+              )}
+            </Button>
+          ) : null}
           {!recipe.isOwner && recipe.ownerName && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
               <Users className="h-4 w-4" />

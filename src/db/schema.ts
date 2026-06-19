@@ -2,6 +2,7 @@ import { relations, sql } from 'drizzle-orm'
 import {
   boolean,
   doublePrecision,
+  index,
   integer,
   pgTable,
   primaryKey,
@@ -93,8 +94,6 @@ export const recipe = pgTable('recipe', {
     .array()
     .notNull()
     .default(sql`'{}'::text[]`),
-  /** Marked as part of this week's meal plan. */
-  isActive: boolean('is_active').notNull().default(false),
   /**
    * The user who owns this recipe. Recipes are private to the owner unless the
    * owner shares access to their collection via {@link accessGrant}. (DB column
@@ -192,6 +191,51 @@ export const shoppingCheck = pgTable(
   (t) => [primaryKey({ columns: [t.scopeId, t.itemKey] })],
 )
 
+/**
+ * The materialized shopping list: one row per ingredient *contribution*, scoped
+ * to a household. Items get here explicitly — either added from a recipe
+ * ({@link sourceRecipeId} set) or typed in ad-hoc ({@link sourceRecipeId} null).
+ * They persist independently of any recipe state; only an explicit remove takes
+ * them off the list.
+ *
+ * The list shown to users aggregates these by {@link itemKey} (normalized
+ * name + unit), summing quantities — so two recipes both needing garlic merge
+ * into one line. The stored `itemKey` mirrors the server's `itemKey()` helper so
+ * aggregation and the {@link shoppingCheck} "ticked off" rows line up exactly.
+ */
+export const shoppingEntry = pgTable(
+  'shopping_entry',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    /** Household id (shared scope) — same opaque scope key as {@link shoppingCheck}. */
+    scopeId: text('scope_id').notNull(),
+    /** Normalized `name__unit`, computed at insert time. Groups contributions into one line. */
+    itemKey: text('item_key').notNull(),
+    name: text('name').notNull(),
+    quantity: doublePrecision('quantity'),
+    unit: text('unit'),
+    note: text('note'),
+    /** The recipe this came from; null for ad-hoc items. Cleared (not deleted) if the recipe is removed. */
+    sourceRecipeId: text('source_recipe_id').references(() => recipe.id, {
+      onDelete: 'set null',
+    }),
+    /** Denormalized recipe title for display — survives recipe edits/deletion. Null for ad-hoc items. */
+    sourceTitle: text('source_title'),
+    createdAt: timestamp('created_at')
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp('updated_at')
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (t) => [
+    index('shopping_entry_scope_idx').on(t.scopeId),
+    index('shopping_entry_source_idx').on(t.sourceRecipeId),
+  ],
+)
+
 /* -------------------------------------------------------------------------- */
 /*  Relations                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -217,3 +261,5 @@ export type Ingredient = typeof ingredient.$inferSelect
 export type NewIngredient = typeof ingredient.$inferInsert
 export type Invite = typeof invite.$inferSelect
 export type HouseholdMember = typeof householdMember.$inferSelect
+export type ShoppingEntry = typeof shoppingEntry.$inferSelect
+export type NewShoppingEntry = typeof shoppingEntry.$inferInsert
