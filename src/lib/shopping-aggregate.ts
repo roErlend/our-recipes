@@ -11,6 +11,13 @@ export interface ShoppingItem {
   unit: string | null
   /** Summed quantity across contributions, or null if none of them were quantified. */
   quantity: number | null
+  /**
+   * Manual per-line quantity override, or null when none is set. The displayed
+   * amount is `overrideQuantity ?? quantity` — keeping these separate (rather
+   * than baking the override into `quantity`) lets the client revert a cleared
+   * override to the computed sum optimistically, without a round-trip.
+   */
+  overrideQuantity: number | null
   /** True when at least one contributing entry had no numeric quantity (e.g. "to taste"). */
   hasUnquantified: boolean
   /** Titles of the recipes that contributed this item (empty for ad-hoc items). */
@@ -75,6 +82,7 @@ export function aggregateShoppingEntries(
         name: e.name.trim(),
         unit: e.unit,
         quantity: e.quantity ?? null,
+        overrideQuantity: null,
         hasUnquantified: e.quantity == null,
         sources: e.sourceTitle ? [e.sourceTitle] : [],
         category: opts.resolveCategory(e.name),

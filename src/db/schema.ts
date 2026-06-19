@@ -193,6 +193,14 @@ export const shoppingCheck = pgTable(
     scopeId: text('user_id').notNull(),
     itemKey: text('item_key').notNull(),
     checked: boolean('checked').notNull().default(false),
+    /**
+     * Optional manual quantity for the aggregated line. When set, it replaces
+     * the quantity summed from the contributing entries on display (the entries
+     * themselves are untouched, so recipe linkage / "on the list" status are
+     * preserved). Null means "use the computed sum". Lives here, keyed by
+     * (scope, item_key), so it survives recipe re-aggregation just like `checked`.
+     */
+    overrideQuantity: doublePrecision('override_quantity'),
     updatedAt: timestamp('updated_at')
       .$defaultFn(() => new Date())
       .notNull(),

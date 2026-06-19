@@ -70,6 +70,12 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
       .from(shoppingCheck)
       .where(eq(shoppingCheck.scopeId, householdId))
     const checkedByKey = new Map(checks.map((c) => [c.itemKey, c.checked]))
+    // Manual per-line quantity overrides (see shopping_check.override_quantity).
+    const overrideByKey = new Map(
+      checks
+        .filter((c) => c.overrideQuantity != null)
+        .map((c) => [c.itemKey, c.overrideQuantity as number]),
+    )
 
     // Categories are resolved by ingredient name (read-time), so recipe-derived
     // items get categorized too as soon as the name is in the catalog.
@@ -80,6 +86,15 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
         catalog.get(nameKey(name))?.category ?? DEFAULT_CATEGORY,
       isChecked: (key) => checkedByKey.get(key) ?? false,
     })
+
+    // Attach manual overrides as a separate field (the displayed amount is
+    // `overrideQuantity ?? quantity`). `quantity` keeps the computed sum so the
+    // client can revert a cleared override without a round-trip. Entries are
+    // left intact, so recipe linkage / "on the list" status are unaffected.
+    for (const item of items) {
+      const override = overrideByKey.get(item.key)
+      if (override != null) item.overrideQuantity = override
+    }
 
     return { recipes, items, scopeId: householdId }
   },
@@ -284,6 +299,41 @@ export const removeShoppingItem = createServerFn({ method: 'POST' })
     })
 
     return { key: data.key }
+  })
+
+/**
+ * Set (or clear, with `quantity: null`) the manual quantity override for a line.
+ * Stored on the `shopping_check` row keyed by (household, item_key), so it
+ * survives recipe re-aggregation and leaves the contributing entries untouched.
+ * Clearing reverts the line to the quantity summed from its entries.
+ */
+export const setItemQuantity = createServerFn({ method: 'POST' })
+  .validator((input: { key: string; quantity: number | null }) =>
+    z
+      .object({
+        key: z.string().min(1),
+        quantity: z.number().positive().nullable(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    const { householdId } = await accessibleScope(user.id)
+    await db
+      .insert(shoppingCheck)
+      .values({
+        scopeId: householdId,
+        itemKey: data.key,
+        checked: false,
+        overrideQuantity: data.quantity,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [shoppingCheck.scopeId, shoppingCheck.itemKey],
+        // Only touch the override — leave the checked state as-is.
+        set: { overrideQuantity: data.quantity, updatedAt: new Date() },
+      })
+    return { key: data.key, quantity: data.quantity }
   })
 
 /** Remove all currently ticked-off items from the list ("Fjern avhukede"). */

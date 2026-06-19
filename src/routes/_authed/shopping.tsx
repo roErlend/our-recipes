@@ -6,7 +6,7 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ListChecks, ShoppingCart, Trash2, X } from 'lucide-react'
+import { ListChecks, Minus, Plus, ShoppingCart, Trash2, X } from 'lucide-react'
 
 import { AddShoppingItem } from '@/components/AddShoppingItem'
 import { Button } from '@/components/ui/Button'
@@ -26,6 +26,7 @@ import {
   addManualItem,
   removeCheckedItems,
   removeShoppingItem,
+  setItemQuantity,
   type ShoppingItem,
   type ShoppingList,
 } from '@/server/shopping'
@@ -72,14 +73,24 @@ function groupItems(
     }))
 }
 
+/** The amount shown for a line: a manual override wins over the computed sum. */
+function effectiveQuantity(item: ShoppingItem) {
+  return item.overrideQuantity ?? item.quantity
+}
+
 function formatAmount(item: ShoppingItem) {
+  const qty = effectiveQuantity(item)
   const parts: string[] = []
-  if (item.quantity != null) {
-    parts.push(`${+item.quantity.toFixed(2)}${item.unit ? ` ${item.unit}` : ''}`)
+  if (qty != null) {
+    parts.push(`${+qty.toFixed(2)}${item.unit ? ` ${item.unit}` : ''}`)
   } else if (item.unit) {
     parts.push(item.unit)
   }
-  if (item.hasUnquantified && item.quantity != null) parts.push('+ mer')
+  // "+ mer" flags an unquantified contribution on the *computed* sum; a manual
+  // override is an explicit total, so it suppresses the hint.
+  if (item.overrideQuantity == null && item.hasUnquantified && qty != null) {
+    parts.push('+ mer')
+  }
   return parts.join(' ')
 }
 
@@ -122,6 +133,7 @@ function useShoppingMutations() {
           name,
           unit: null,
           quantity: null,
+          overrideQuantity: null,
           hasUnquantified: true,
           sources: [],
           category,
@@ -166,7 +178,31 @@ function useShoppingMutations() {
     mutationFn: () => removeCheckedItems(),
     onSuccess: invalidate,
   })
-  return { add, remove, removeChecked }
+  const setQuantity = useMutation({
+    mutationFn: (vars: { key: string; quantity: number | null }) =>
+      setItemQuantity({ data: vars }),
+    onMutate: async ({ key, quantity }) => {
+      await queryClient.cancelQueries({ queryKey: shoppingKey })
+      const previous = queryClient.getQueryData<ShoppingList>(shoppingKey)
+      // Optimistic for both set and clear: we only touch overrideQuantity, and
+      // the displayed amount falls back to the (known) computed `quantity` when
+      // it's null — so clearing reverts instantly, no round-trip needed.
+      if (previous) {
+        queryClient.setQueryData<ShoppingList>(shoppingKey, {
+          ...previous,
+          items: previous.items.map((i) =>
+            i.key === key ? { ...i, overrideQuantity: quantity } : i,
+          ),
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(shoppingKey, ctx.previous)
+    },
+    onSettled: invalidate,
+  })
+  return { add, remove, removeChecked, setQuantity }
 }
 
 function ShoppingPage() {
@@ -193,8 +229,8 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
   // removed on either device — we refetch the server-aggregated list. The
   // server stays the single source of truth for merging/categorizing (and for
   // each recipe's "on the list" flag); Electric just tells us when to re-pull.
-  // (Checks below sync directly: they're a simple per-row overlay, so reading
-  // them straight from the collection keeps toggling instant/optimistic.)
+  // (The checked state below syncs directly: it's a simple per-row overlay, so
+  // reading it straight from the collection keeps toggling instant/optimistic.)
   const { data: entryRows } = useLiveQuery((q) =>
     q.from({ e: shoppingEntriesCollection }),
   )
@@ -202,14 +238,25 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
     .map((r) => `${r.id}:${r.item_key}:${r.quantity}:${r.source_title}`)
     .sort()
     .join('|')
+  // Manual quantity overrides ride the same shopping_check shape as the checks.
+  // The displayed amount is server-computed, so (unlike a checkbox) we can't
+  // just overlay it — instead we refetch when an override changes on either
+  // device. Keyed on override values only (not `checked`) so plain toggles,
+  // which need no refetch, don't trigger one.
+  const overridesSig = (checkRows ?? [])
+    .filter((r) => r.override_quantity != null)
+    .map((r) => `${r.item_key}:${r.override_quantity}`)
+    .sort()
+    .join('|')
+  const syncSig = `${entriesSig}||${overridesSig}`
   // Skip the first sync (the snapshot already reflects it); refetch on changes.
   const lastSig = useRef<string | null>(null)
   useEffect(() => {
-    if (lastSig.current !== null && lastSig.current !== entriesSig) {
+    if (lastSig.current !== null && lastSig.current !== syncSig) {
       queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
     }
-    lastSig.current = entriesSig
-  }, [entriesSig, queryClient])
+    lastSig.current = syncSig
+  }, [syncSig, queryClient])
 
   const checkedByKey = new Map((checkRows ?? []).map((r) => [r.item_key, r.checked]))
 
@@ -225,6 +272,7 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
         user_id: list.scopeId,
         item_key: item.key,
         checked,
+        override_quantity: null,
       })
     }
   }
@@ -242,7 +290,9 @@ function ShoppingView({
   onToggle: (item: ShoppingItem, checked: boolean) => void
 }) {
   const { recipes, items } = list
-  const { add, remove, removeChecked } = useShoppingMutations()
+  const { add, remove, removeChecked, setQuantity } = useShoppingMutations()
+  const onSetQuantity = (key: string, quantity: number | null) =>
+    setQuantity.mutate({ key, quantity })
   // Unchecked items are grouped under category headers; checked items all drop
   // to a single section at the very bottom (ordered by category, then name).
   const uncheckedGroups = groupItems(
@@ -329,6 +379,7 @@ function ShoppingView({
                     checked={false}
                     onToggle={onToggle}
                     onRemove={() => remove.mutate(item.key)}
+                    onSetQuantity={onSetQuantity}
                   />
                 ))}
               </ul>
@@ -346,6 +397,7 @@ function ShoppingView({
                     checked
                     onToggle={onToggle}
                     onRemove={() => remove.mutate(item.key)}
+                    onSetQuantity={onSetQuantity}
                   />
                 ))}
               </ul>
@@ -370,13 +422,53 @@ function ShoppingRow({
   checked,
   onToggle,
   onRemove,
+  onSetQuantity,
 }: {
   item: ShoppingItem
   checked: boolean
   onToggle: (item: ShoppingItem, checked: boolean) => void
   onRemove: () => void
+  onSetQuantity: (key: string, quantity: number | null) => void
 }) {
   const amount = formatAmount(item)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  // Escape sets this so the blur that follows (input unmount) skips the save.
+  const skipCommit = useRef(false)
+
+  const effective = effectiveQuantity(item)
+
+  const startEdit = () => {
+    setDraft(
+      effective != null ? String(+effective.toFixed(2)).replace('.', ',') : '',
+    )
+    setEditing(true)
+  }
+
+  const commit = () => {
+    setEditing(false)
+    if (skipCommit.current) {
+      skipCommit.current = false
+      return
+    }
+    const raw = draft.trim().replace(',', '.')
+    if (raw === '') {
+      // Empty → clear the override (revert to the computed sum).
+      if (item.overrideQuantity != null) onSetQuantity(item.key, null)
+      return
+    }
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n <= 0) return
+    if (n !== effective) onSetQuantity(item.key, +n.toFixed(2))
+  }
+
+  // Steppers set a manual override on the line; ± operate on the shown amount.
+  const increment = () => onSetQuantity(item.key, +((effective ?? 0) + 1).toFixed(2))
+  const canDecrement = effective != null && effective > 1
+  const decrement = () => {
+    if (canDecrement) onSetQuantity(item.key, +(effective - 1).toFixed(2))
+  }
+
   return (
     <li className="flex items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-0">
       <Checkbox
@@ -399,16 +491,63 @@ function ShoppingRow({
           </span>
         )}
       </div>
-      {amount && (
-        <span
-          className={
-            checked
-              ? 'text-sm text-stone-300 line-through'
-              : 'text-sm font-medium text-stone-600'
-          }
-        >
-          {amount}
+      {editing ? (
+        <span className="flex shrink-0 items-center gap-1">
+          <input
+            autoFocus
+            inputMode="decimal"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                e.currentTarget.blur()
+              } else if (e.key === 'Escape') {
+                skipCommit.current = true
+                e.currentTarget.blur()
+              }
+            }}
+            aria-label={`Antall for ${item.name}`}
+            className="w-16 rounded border border-stone-300 px-1.5 py-0.5 text-right text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+          />
+          {item.unit && <span className="text-sm text-stone-500">{item.unit}</span>}
         </span>
+      ) : (
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={decrement}
+            disabled={!canDecrement}
+            aria-label={`Færre ${item.name}`}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={startEdit}
+            aria-label={`Endre antall for ${item.name}`}
+            className={[
+              'min-w-[3.5rem] rounded px-1 py-0.5 text-center text-sm tabular-nums transition-colors hover:bg-stone-100',
+              checked
+                ? 'text-stone-300 line-through'
+                : amount
+                  ? 'font-medium text-stone-600'
+                  : 'text-stone-300',
+            ].join(' ')}
+          >
+            {amount || 'antall'}
+          </button>
+          <button
+            type="button"
+            onClick={increment}
+            aria-label={`Flere ${item.name}`}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
       )}
       <button
         type="button"

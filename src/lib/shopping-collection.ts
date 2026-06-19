@@ -13,12 +13,15 @@ import { clearShoppingChecks, setShoppingChecked } from '@/server/shopping'
  *
  * Only the household's own rows arrive here — the `/api/shapes/shopping` proxy
  * pins the `where` clause server-side. The columns mirror the proxy's
- * `columns=user_id,item_key,checked` selection.
+ * `columns=user_id,item_key,checked,override_quantity` selection.
  */
 const shoppingCheckRow = z.object({
   user_id: z.string(),
   item_key: z.string(),
   checked: z.boolean(),
+  // Manual per-line quantity override (null = use the computed sum). Synced so
+  // an edit on one device propagates to the other; see shopping.tsx.
+  override_quantity: z.number().nullable(),
 })
 
 export type ShoppingCheckRow = z.infer<typeof shoppingCheckRow>

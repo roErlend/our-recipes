@@ -50,7 +50,7 @@ export const Route = createFileRoute('/api/shapes/shopping')({
 
         // Server-controlled shape: this household's shopping_check rows only.
         upstream.searchParams.set('table', 'shopping_check')
-        upstream.searchParams.set('columns', 'user_id,item_key,checked')
+        upstream.searchParams.set('columns', 'user_id,item_key,checked,override_quantity')
         upstream.searchParams.set('where', 'user_id = $1')
         upstream.searchParams.set('params[1]', householdId)
         upstream.searchParams.set('source_id', sourceId)
