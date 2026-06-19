@@ -1,23 +1,22 @@
 import { defineConfig } from 'vite'
 
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
-import netlify from '@netlify/vite-plugin-tanstack-start'
+import { nitro } from 'nitro/vite'
 
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import tsConfigPaths from 'vite-tsconfig-paths'
 
-const config = defineConfig(({ command }) => ({
+const config = defineConfig({
   plugins: [
     tsConfigPaths(),
     tailwindcss(),
     tanstackStart(),
-    // Configure the build for Netlify. Only applied to `vite build` — its dev
-    // emulation isn't needed here and interfered with local routing. Must come
-    // after tanstackStart().
-    ...(command === 'build' ? [netlify()] : []),
+    // Nitro powers the server build. Vercel auto-detects TanStack Start + Nitro
+    // and picks its `vercel` preset, so no build command/output config needed.
+    nitro(),
     viteReact(),
   ],
-}))
+})
 
 export default config
