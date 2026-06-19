@@ -65,12 +65,19 @@ function RecipesPage() {
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return recipes
-    return recipes.filter(
-      (r) =>
-        r.title.toLowerCase().includes(term) ||
-        (r.description?.toLowerCase().includes(term) ?? false) ||
-        r.tags.some((t) => t.toLowerCase().includes(term)),
+    const matched = !term
+      ? recipes
+      : recipes.filter(
+          (r) =>
+            r.title.toLowerCase().includes(term) ||
+            (r.description?.toLowerCase().includes(term) ?? false) ||
+            r.tags.some((t) => t.toLowerCase().includes(term)),
+        )
+    // Recipes already on the shopping list float to the top; the sort is stable
+    // so the default (rating) order is preserved within each group. Toggling a
+    // recipe on/off the list re-sorts it live via the optimistic update.
+    return [...matched].sort(
+      (a, b) => Number(b.inShoppingList) - Number(a.inShoppingList),
     )
   }, [recipes, search])
 
