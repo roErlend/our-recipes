@@ -11,6 +11,7 @@ import {
   Plus,
   Search,
   ShoppingCart,
+  Star,
   Users,
   UtensilsCrossed,
 } from 'lucide-react'
@@ -193,6 +194,18 @@ function RecipeCard({
       </div>
 
       <div className="mt-auto flex flex-wrap items-center gap-2 text-xs text-stone-500">
+        {recipe.ratingCount > 0 && (
+          <span
+            className="inline-flex items-center gap-1 font-semibold text-amber-600"
+            title={`Sum ${recipe.ratingSum} · snitt ${recipe.ratingAvg.toFixed(1).replace('.', ',')} av 10 · ${recipe.ratingCount} ${recipe.ratingCount === 1 ? 'stemme' : 'stemmer'}`}
+          >
+            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+            {recipe.ratingSum}
+            <span className="font-normal text-stone-400">
+              ({recipe.ratingCount})
+            </span>
+          </span>
+        )}
         <span className="inline-flex items-center gap-1">
           <UtensilsCrossed className="h-3.5 w-3.5" />
           {recipe.ingredientCount}{' '}

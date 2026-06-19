@@ -265,6 +265,32 @@ export const recipeImage = pgTable('recipe_image', {
     .notNull(),
 })
 
+/**
+ * A household member's 1–10 rating of a recipe (one per user per recipe). The
+ * overview orders by the sum of these; the detail page shows each member's vote
+ * plus the aggregate. Only members who can access a recipe may rate it.
+ */
+export const recipeRating = pgTable(
+  'recipe_rating',
+  {
+    recipeId: text('recipe_id')
+      .notNull()
+      .references(() => recipe.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    /** 1–10. */
+    score: integer('score').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.recipeId, t.userId] }),
+    index('recipe_rating_recipe_idx').on(t.recipeId),
+  ],
+)
+
 /* -------------------------------------------------------------------------- */
 /*  Relations                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -293,3 +319,4 @@ export type HouseholdMember = typeof householdMember.$inferSelect
 export type ShoppingEntry = typeof shoppingEntry.$inferSelect
 export type NewShoppingEntry = typeof shoppingEntry.$inferInsert
 export type RecipeImage = typeof recipeImage.$inferSelect
+export type RecipeRating = typeof recipeRating.$inferSelect

@@ -3,9 +3,33 @@ import { and, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '@/db'
-import { ingredient, recipe, recipeImage, shoppingEntry } from '@/db/schema'
+import {
+  ingredient,
+  recipe,
+  recipeImage,
+  recipeRating,
+  shoppingEntry,
+  user as userTable,
+} from '@/db/schema'
 import { requireUser } from '@/server/auth'
 import { accessibleScope } from '@/server/sharing'
+
+/** Rating aggregates (sum + count) for a set of recipes, keyed by recipe id. */
+const ratingAggregates = createServerOnlyFn(async (recipeIds: string[]) => {
+  if (!recipeIds.length) return new Map<string, { sum: number; count: number }>()
+  const rows = await db
+    .select({
+      recipeId: recipeRating.recipeId,
+      sum: sql<number>`coalesce(sum(${recipeRating.score}), 0)`,
+      count: sql<number>`count(*)`,
+    })
+    .from(recipeRating)
+    .where(inArray(recipeRating.recipeId, recipeIds))
+    .groupBy(recipeRating.recipeId)
+  return new Map(
+    rows.map((r) => [r.recipeId, { sum: Number(r.sum), count: Number(r.count) }]),
+  )
+})
 
 /** Recipe ids in the household that currently have items on the shopping list. */
 const recipesOnShoppingList = createServerOnlyFn(async (householdId: string) => {
@@ -91,22 +115,28 @@ export const listRecipes = createServerFn({ method: 'GET' })
       recipesOnShoppingList(householdId),
     ])
 
-    // Which of these recipes have an uploaded image (id + updatedAt only — never
-    // the bytes) so the cards can show a thumbnail.
     const ids = rows.map((r) => r.id)
-    const imgRows = ids.length
-      ? await db
-          .select({
-            recipeId: recipeImage.recipeId,
-            updatedAt: recipeImage.updatedAt,
-          })
-          .from(recipeImage)
-          .where(inArray(recipeImage.recipeId, ids))
-      : []
+    // Uploaded-image presence (id + updatedAt only — never the bytes) for
+    // thumbnails, and rating aggregates for display + default ordering.
+    const [imgRows, ratings] = await Promise.all([
+      ids.length
+        ? db
+            .select({
+              recipeId: recipeImage.recipeId,
+              updatedAt: recipeImage.updatedAt,
+            })
+            .from(recipeImage)
+            .where(inArray(recipeImage.recipeId, ids))
+        : Promise.resolve([]),
+      ratingAggregates(ids),
+    ])
     const imgByRecipe = new Map(imgRows.map((i) => [i.recipeId, i.updatedAt]))
 
-    return rows.map(({ ingredients, owner, ...r }) => {
+    const mapped = rows.map(({ ingredients, owner, ...r }) => {
       const imgUpdated = imgByRecipe.get(r.id)
+      const agg = ratings.get(r.id)
+      const ratingSum = agg?.sum ?? 0
+      const ratingCount = agg?.count ?? 0
       return {
         ...r,
         ingredientCount: ingredients.length,
@@ -116,8 +146,20 @@ export const listRecipes = createServerFn({ method: 'GET' })
         uploadedImageUrl: imgUpdated
           ? `/api/recipes/${r.id}/image?v=${imgUpdated.getTime()}`
           : null,
+        ratingSum,
+        ratingCount,
+        ratingAvg: ratingCount ? ratingSum / ratingCount : 0,
       }
     })
+
+    // Default ordering: highest aggregate rating first, then most recently
+    // updated (rows already arrive in updatedAt-desc order, so the sort is a
+    // stable refinement). Unrated recipes (sum 0) fall to the bottom by recency.
+    return mapped.sort(
+      (a, b) =>
+        b.ratingSum - a.ratingSum ||
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )
   })
 
 export const getRecipe = createServerFn({ method: 'GET' })
@@ -135,14 +177,35 @@ export const getRecipe = createServerFn({ method: 'GET' })
       },
     })
     if (!row || !ownerIds.includes(row.ownerId)) return null
-    const [onList, [img]] = await Promise.all([
+    const [onList, [img], ratingRows] = await Promise.all([
       recipesOnShoppingList(householdId),
       db
         .select({ updatedAt: recipeImage.updatedAt })
         .from(recipeImage)
         .where(eq(recipeImage.recipeId, id))
         .limit(1),
+      db
+        .select({
+          userId: recipeRating.userId,
+          score: recipeRating.score,
+          name: userTable.name,
+          email: userTable.email,
+        })
+        .from(recipeRating)
+        .innerJoin(userTable, eq(userTable.id, recipeRating.userId))
+        .where(eq(recipeRating.recipeId, id))
+        .orderBy(desc(recipeRating.score)),
     ])
+
+    const ratings = ratingRows.map((r) => ({
+      userId: r.userId,
+      name: r.name || r.email,
+      score: r.score,
+      isMe: r.userId === user.id,
+    }))
+    const ratingSum = ratings.reduce((s, r) => s + r.score, 0)
+    const ratingCount = ratings.length
+
     const { owner, ...rest } = row
     return {
       ...rest,
@@ -154,6 +217,11 @@ export const getRecipe = createServerFn({ method: 'GET' })
       uploadedImageUrl: img
         ? `/api/recipes/${id}/image?v=${img.updatedAt.getTime()}`
         : null,
+      ratings,
+      ratingSum,
+      ratingCount,
+      ratingAvg: ratingCount ? ratingSum / ratingCount : 0,
+      myScore: ratings.find((r) => r.isMe)?.score ?? null,
     }
   })
 
@@ -307,6 +375,55 @@ export const deleteRecipe = createServerFn({ method: 'POST' })
     await assertCanAdminister(user.id, id)
     await db.delete(recipe).where(eq(recipe.id, id))
     return { id }
+  })
+
+/** Cast the current user's 1–10 vote on a recipe (upsert). */
+export const setRecipeRating = createServerFn({ method: 'POST' })
+  .validator((input: { recipeId: string; score: number }) =>
+    z
+      .object({
+        recipeId: z.string().min(1),
+        score: z.number().int().min(1).max(10),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    // Same access check as administering — only members who can see the recipe
+    // may rate it.
+    await assertCanAdminister(user.id, data.recipeId)
+    await db
+      .insert(recipeRating)
+      .values({
+        recipeId: data.recipeId,
+        userId: user.id,
+        score: data.score,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [recipeRating.recipeId, recipeRating.userId],
+        set: { score: data.score, updatedAt: new Date() },
+      })
+    return { recipeId: data.recipeId, score: data.score }
+  })
+
+/** Remove the current user's vote on a recipe. */
+export const removeRecipeRating = createServerFn({ method: 'POST' })
+  .validator((input: { recipeId: string }) =>
+    z.object({ recipeId: z.string().min(1) }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    await assertCanAdminister(user.id, data.recipeId)
+    await db
+      .delete(recipeRating)
+      .where(
+        and(
+          eq(recipeRating.recipeId, data.recipeId),
+          eq(recipeRating.userId, user.id),
+        ),
+      )
+    return { recipeId: data.recipeId }
   })
 
 export type RecipeListItem = Awaited<ReturnType<typeof listRecipes>>[number]

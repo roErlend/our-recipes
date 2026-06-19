@@ -11,21 +11,33 @@ import {
   ExternalLink,
   Pencil,
   ShoppingCart,
+  Star,
   Trash2,
   Users,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
+import { StarRating } from '@/components/StarRating'
 import {
   recipeQueryOptions,
   recipesQueryOptions,
   shoppingQueryOptions,
 } from '@/lib/queries'
-import { type RecipeDetail, deleteRecipe } from '@/server/recipes'
+import {
+  type RecipeDetail,
+  deleteRecipe,
+  removeRecipeRating,
+  setRecipeRating,
+} from '@/server/recipes'
 import {
   addRecipeToShopping,
   removeRecipeFromShopping,
 } from '@/server/shopping'
+
+/** "7,7" — one decimal, Norwegian comma. */
+function formatAvg(avg: number) {
+  return avg.toFixed(1).replace('.', ',')
+}
 
 export const Route = createFileRoute('/_authed/recipes/$recipeId')({
   loader: ({ context, params }) =>
@@ -74,6 +86,35 @@ function RecipeDetailPage() {
     },
   })
 
+  const ratingMutation = useMutation({
+    mutationFn: (score: number) =>
+      score === 0
+        ? removeRecipeRating({ data: { recipeId } })
+        : setRecipeRating({ data: { recipeId, score } }),
+    onMutate: async (score) => {
+      // Optimistically fill the user's own stars; the aggregate + others list
+      // refresh on settle.
+      await queryClient.cancelQueries({ queryKey: recipeKey })
+      const previous = queryClient.getQueryData<RecipeDetail | null>(recipeKey)
+      if (previous) {
+        queryClient.setQueryData<RecipeDetail>(recipeKey, {
+          ...previous,
+          myScore: score === 0 ? null : score,
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous !== undefined)
+        queryClient.setQueryData(recipeKey, ctx.previous)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: recipeKey })
+      // Ratings drive the overview's default order — refresh that too.
+      queryClient.invalidateQueries({ queryKey: recipesQueryOptions().queryKey })
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: () => deleteRecipe({ data: recipeId }),
     onSuccess: async () => {
@@ -115,7 +156,30 @@ function RecipeDetailPage() {
       <header className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-stone-900">{recipe.title}</h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="text-3xl font-bold text-stone-900">
+                {recipe.title}
+              </h1>
+              {recipe.ratingCount > 0 ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-amber-700 ring-1 ring-amber-200"
+                  title={`Sum ${recipe.ratingSum} · snitt ${formatAvg(recipe.ratingAvg)} av 10 · ${recipe.ratingCount} ${recipe.ratingCount === 1 ? 'stemme' : 'stemmer'}`}
+                >
+                  <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                  <span className="text-lg font-bold leading-none">
+                    {recipe.ratingSum}
+                  </span>
+                  <span className="text-xs text-amber-600">
+                    snitt {formatAvg(recipe.ratingAvg)} · {recipe.ratingCount}{' '}
+                    {recipe.ratingCount === 1 ? 'stemme' : 'stemmer'}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-sm text-stone-400">
+                  Ingen vurderinger ennå
+                </span>
+              )}
+            </div>
             {recipe.description && (
               <p className="mt-2 max-w-2xl text-stone-600">
                 {recipe.description}
@@ -230,6 +294,53 @@ function RecipeDetailPage() {
           />
         </div>
       )}
+
+      <section className="flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-lg font-semibold text-stone-900">Vurderinger</h2>
+          <p className="text-sm text-stone-500">
+            Gi 1–10 stjerner. Alle i husholdningen teller med i snittet.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span className="w-28 text-sm font-medium text-stone-700">
+            Din vurdering
+          </span>
+          <StarRating
+            value={recipe.myScore ?? 0}
+            onChange={(score) => ratingMutation.mutate(score)}
+            label="Din vurdering"
+          />
+          <span className="text-sm text-stone-400">
+            {recipe.myScore
+              ? `${recipe.myScore}/10 · trykk samme stjerne for å fjerne`
+              : 'Trykk for å gi poeng'}
+          </span>
+        </div>
+
+        {recipe.ratings.length > 0 && (
+          <ul className="flex flex-col gap-2 border-t border-stone-100 pt-3">
+            {recipe.ratings.map((r) => (
+              <li
+                key={r.userId}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1"
+              >
+                <span className="w-28 truncate text-sm text-stone-700">
+                  {r.name}
+                  {r.isMe && (
+                    <span className="ml-1 text-xs text-stone-400">(deg)</span>
+                  )}
+                </span>
+                <StarRating value={r.score} size="sm" />
+                <span className="text-sm font-medium text-stone-500">
+                  {r.score}/10
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <div
         className={
