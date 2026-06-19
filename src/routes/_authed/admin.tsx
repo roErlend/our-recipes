@@ -8,6 +8,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { Check, Pencil, Plus, Search, Shield, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
+import { ComboBox } from '@/components/ui/ComboBox'
 import { isAdminEmail } from '@/lib/admin'
 import { categoryRank, DEFAULT_CATEGORY } from '@/lib/categories'
 import {
@@ -328,12 +329,6 @@ function IngredientsSection({
         />
       </div>
 
-      <datalist id="admin-categories">
-        {categories.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
-
       <NewIngredientForm
         categories={categories}
         busy={create.isPending}
@@ -350,6 +345,7 @@ function IngredientsSection({
             <IngredientRow
               key={ingredient.id}
               ingredient={ingredient}
+              categories={categories}
               onSave={(name, category) =>
                 update.mutate({ id: ingredient.id, name, category })
               }
@@ -397,18 +393,14 @@ function NewIngredientForm({
         aria-label="Navn på ny ingrediens"
         className="w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:min-w-0 sm:flex-1"
       />
-      <select
+      <ComboBox
+        items={categories}
         value={category}
-        onChange={(e) => setCategory(e.target.value)}
+        onChange={setCategory}
+        maxLength={60}
         aria-label="Kategori for ny ingrediens"
-        className="w-full rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-sm text-stone-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:w-44"
-      >
-        {categories.map((c) => (
-          <option key={c} value={c}>
-            {c}
-          </option>
-        ))}
-      </select>
+        className="w-full sm:w-44"
+      />
       <Button
         type="submit"
         size="sm"
@@ -424,11 +416,13 @@ function NewIngredientForm({
 
 function IngredientRow({
   ingredient,
+  categories,
   onSave,
   onDelete,
   busy,
 }: {
   ingredient: AdminIngredient
+  categories: string[]
   onSave: (name: string, category: string) => void
   onDelete: () => void
   busy: boolean
@@ -447,16 +441,16 @@ function IngredientRow({
         onChange={(e) => setName(e.target.value)}
         maxLength={200}
         aria-label={`Navn på ${ingredient.name}`}
-        className="w-full rounded-lg border border-stone-300 px-2 py-1 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:min-w-0 sm:flex-1"
+        className="w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:min-w-0 sm:flex-1"
       />
       <div className="flex items-center gap-2">
-        <input
-          list="admin-categories"
+        <ComboBox
+          items={categories}
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          onChange={setCategory}
           maxLength={60}
           aria-label={`Kategori for ${ingredient.name}`}
-          className="min-w-0 flex-1 rounded-lg border border-stone-300 px-2 py-1 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:w-44 sm:flex-none"
+          className="min-w-0 flex-1 sm:w-44 sm:flex-none"
         />
         {ingredient.isStock ? (
           <span className="shrink-0 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
