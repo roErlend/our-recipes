@@ -52,8 +52,19 @@ recipes. See [shopping-list-model below](#shopping-list-flow).
 - `shopping_entry` — **one row per contribution**. Added either from a recipe
   (`source_recipe_id` set, `source_title` denormalized for display) or typed
   ad-hoc (`source_recipe_id` null). Persists until explicitly removed.
-- `shopping_check` — per-item "ticked off" state, keyed by `(scope_id, item_key)`.
-  Syncs in realtime via Electric.
+- `shopping_check` — per-item state, keyed by `(scope_id, item_key)`:
+  - `checked` — "ticked off" state. Syncs in realtime via Electric.
+  - `override_quantity` (nullable) — a **manual quantity override** for the
+    aggregated line. When set, it replaces the summed quantity on display (the
+    contributing entries are untouched, so recipe linkage / on-list status are
+    preserved); null means "use the computed sum". Edited via `setItemQuantity`
+    and applied at read time in `getShoppingList`. It lives here (not on
+    `shopping_entry`) precisely so it survives recipe re-aggregation, like
+    `checked`. It rides the same Electric `shopping` shape, so an edit syncs
+    across devices: locally it's optimistic via the `['shopping']` query cache;
+    remotely the streamed override change triggers a `['shopping']` refetch
+    (signal→refetch, like the list contents — see
+    [realtime-shopping-list.md](./realtime-shopping-list.md)).
 
 ### item_key — the merge key
 

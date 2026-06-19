@@ -9,10 +9,18 @@ simple stack, and its gotchas aren't visible from the code alone.
 Two Electric **shapes** sync, each via an auth proxy under `src/routes/api/shapes/`
 and a TanStack DB collection in `src/lib/shopping-collection.ts`:
 
-| Shape          | Table            | Collection                   | Client uses it to… |
-| -------------- | ---------------- | ---------------------------- | ------------------ |
-| `shopping`     | `shopping_check` | `shoppingChecksCollection`   | **read directly** — the ticked-off overlay, optimistic |
-| `shopping-entries` | `shopping_entry` | `shoppingEntriesCollection` | **signal only** — detect contents changing, then refetch |
+| Shape          | Table            | Columns                                   | Client uses it to… |
+| -------------- | ---------------- | ----------------------------------------- | ------------------ |
+| `shopping`     | `shopping_check` | `checked` / `override_quantity`           | `checked` → **read directly** (ticked-off overlay, optimistic); `override_quantity` → **signal** (refetch on change) |
+| `shopping-entries` | `shopping_entry` | list contents                         | **signal only** — detect contents changing, then refetch |
+
+> The `shopping` shape carries two columns with *different* sync styles.
+> `checked` is read straight from the collection (a per-row overlay → instant
+> optimistic toggle). `override_quantity` (manual quantity edit) is server-applied
+> into the displayed amount, so it can't be a simple overlay — instead its change
+> is a **signal**: a signature over the override values (NOT `checked`, so plain
+> toggles don't trigger it) drives a `['shopping']` refetch. Locally the edit is
+> optimistic via the query cache; the signal makes it land on the other device.
 
 Data path: browser collection ← `/api/shapes/*` auth proxy ← Electric Cloud
 (`https://api.electric-sql.cloud/v1/shape`) ← tails the Neon WAL. **Writes never
