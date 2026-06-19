@@ -34,10 +34,37 @@ body {
   background-color: var(--color-stone-50);
   color: var(--color-stone-900);
   -webkit-font-smoothing: antialiased;
+  /* No grey flash when tapping buttons/links on mobile. */
+  -webkit-tap-highlight-color: transparent;
+  /* Don't let the page rubber-band/scroll-chain in standalone mode. */
+  overscroll-behavior-y: none;
 }
 
 /* react-aria sets data-focus-visible; give focus rings a consistent look. */
 [data-focus-visible] {
   outline: 2px solid var(--color-brand-500);
   outline-offset: 2px;
+}
+
+/* ---- Mobile / installed-PWA polish ---- */
+
+/* Keep content clear of the notch / status bar when running fullscreen
+   (viewport-fit=cover is set in the document head). */
+@supports (padding: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* iOS zooms the page when focusing an input smaller than 16px. Force at least
+   16px on touch screens so focusing search / form fields doesn't zoom. */
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }

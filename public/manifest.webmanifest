@@ -1,0 +1,22 @@
+{
+  "name": "Våre oppskrifter",
+  "short_name": "Oppskrifter",
+  "description": "Felles oppskrifter og handleliste",
+  "lang": "no",
+  "start_url": "/recipes",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f5f4",
+  "theme_color": "#2f9e5e",
+  "icons": [
+    { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/pwa-512x512.png", "sizes": "512x512", "type": "image/png" },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
