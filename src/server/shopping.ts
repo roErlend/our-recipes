@@ -190,6 +190,22 @@ export const addRecipeToShopping = createServerFn({ method: 'POST' })
         )
       const rows = [...byKey.values()]
       if (rows.length) await tx.insert(shoppingEntry).values(rows)
+
+      // Adding a recipe means its items are needed again, so clear any leftover
+      // "ticked off" state for them — otherwise re-adding a recipe whose items
+      // were checked off on a previous shop (and kept for history) brings them
+      // back pre-checked, and the recipe would immediately read as fully shopped.
+      const keys = rows.map((row) => row.itemKey)
+      if (keys.length) {
+        await tx
+          .delete(shoppingCheck)
+          .where(
+            and(
+              eq(shoppingCheck.scopeId, householdId),
+              inArray(shoppingCheck.itemKey, keys),
+            ),
+          )
+      }
     })
 
     return { recipeId: r.id, added: byKey.size }
