@@ -12,7 +12,7 @@ import { AddShoppingItem } from '@/components/AddShoppingItem'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { categoryRank } from '@/lib/categories'
-import { shoppingQueryOptions } from '@/lib/queries'
+import { ingredientsQueryOptions, shoppingQueryOptions } from '@/lib/queries'
 import { shoppingChecksCollection } from '@/lib/shopping-collection'
 import {
   addManualItem,
@@ -24,7 +24,11 @@ import {
 
 export const Route = createFileRoute('/_authed/shopping')({
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData(shoppingQueryOptions()),
+    Promise.all([
+      context.queryClient.ensureQueryData(shoppingQueryOptions()),
+      // Preload the catalog so autocomplete is instant on first keystroke.
+      context.queryClient.ensureQueryData(ingredientsQueryOptions()),
+    ]),
   component: ShoppingPage,
 })
 
@@ -84,7 +88,14 @@ function useShoppingMutations() {
   const add = useMutation({
     mutationFn: (input: { name: string; category?: string }) =>
       addManualItem({ data: input }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate()
+      // A newly-typed ingredient is saved to the catalog — refresh it so
+      // autocomplete picks it up.
+      queryClient.invalidateQueries({
+        queryKey: ingredientsQueryOptions().queryKey,
+      })
+    },
   })
   const remove = useMutation({
     mutationFn: (key: string) => removeShoppingItem({ data: { key } }),

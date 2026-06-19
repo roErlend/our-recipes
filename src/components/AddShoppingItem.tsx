@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
@@ -6,9 +7,10 @@ import {
   DEFAULT_CATEGORY,
   INGREDIENT_CATEGORIES,
 } from '@/lib/categories'
+import { ingredientsQueryOptions } from '@/lib/queries'
 import {
-  searchIngredients,
-  type IngredientSuggestion,
+  filterIngredients,
+  type CatalogIngredient,
 } from '@/server/ingredients'
 
 const norm = (s: string) => s.trim().toLowerCase()
@@ -25,42 +27,24 @@ export function AddShoppingItem({
 }) {
   const [value, setValue] = useState('')
   const [category, setCategory] = useState<string>(DEFAULT_CATEGORY)
-  const [suggestions, setSuggestions] = useState<IngredientSuggestion[]>([])
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Whole catalog, preloaded in the route loader and cached by TanStack Query —
+  // filtering happens locally, so suggestions appear instantly with no fetch.
+  const { data: catalog = [] } = useQuery(ingredientsQueryOptions())
+
   const trimmed = value.trim()
   const key = norm(value)
-  const exact = suggestions.find((s) => norm(s.name) === key)
+  const suggestions = useMemo(
+    () => (trimmed === '' ? [] : filterIngredients(catalog, trimmed)),
+    [catalog, trimmed],
+  )
+  const exact = suggestions.find((s) => s.key === key)
   const isNew = trimmed !== '' && !exact
 
-  // Debounced catalog lookup as the user types.
-  useEffect(() => {
-    if (trimmed === '') {
-      setSuggestions([])
-      return
-    }
-    let cancelled = false
-    const t = setTimeout(() => {
-      searchIngredients({ data: { query: trimmed } })
-        .then((rows) => {
-          if (!cancelled) {
-            setSuggestions(rows)
-            setActive(-1)
-          }
-        })
-        .catch(() => {
-          if (!cancelled) setSuggestions([])
-        })
-    }, 150)
-    return () => {
-      cancelled = true
-      clearTimeout(t)
-    }
-  }, [trimmed])
-
-  const choose = (s: IngredientSuggestion) => {
+  const choose = (s: CatalogIngredient) => {
     setValue(s.name)
     setCategory(s.category)
     setOpen(false)
@@ -70,7 +54,9 @@ export function AddShoppingItem({
   const submit = () => {
     const name = value.trim()
     if (!name) return
-    const match = suggestions.find((s) => norm(s.name) === norm(name))
+    // Reuse the catalog entry's display name/category when it's a known
+    // ingredient; otherwise save the typed name under the chosen category.
+    const match = catalog.find((c) => c.key === norm(name))
     onAdd(
       match
         ? { name: match.name }
@@ -78,7 +64,6 @@ export function AddShoppingItem({
     )
     setValue('')
     setCategory(DEFAULT_CATEGORY)
-    setSuggestions([])
     setOpen(false)
     setActive(-1)
   }
@@ -95,7 +80,7 @@ export function AddShoppingItem({
         setActive((i) => (i <= 0 ? suggestions.length - 1 : i - 1))
         return
       }
-      if (e.key === 'Enter' && active >= 0) {
+      if (e.key === 'Enter' && active >= 0 && active < suggestions.length) {
         e.preventDefault()
         choose(suggestions[active])
         return
@@ -128,6 +113,7 @@ export function AddShoppingItem({
             onChange={(e) => {
               setValue(e.target.value)
               setOpen(true)
+              setActive(-1)
             }}
             onFocus={() => setOpen(true)}
             onBlur={() => {

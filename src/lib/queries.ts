@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 
+import { listIngredients } from '@/server/ingredients'
 import { getRecipe, listRecipes } from '@/server/recipes'
 import { getShoppingList } from '@/server/shopping'
 import { getPendingInvites, getSharing } from '@/server/sharing'
@@ -23,6 +24,18 @@ export const shoppingQueryOptions = () =>
   queryOptions({
     queryKey: ['shopping'] as const,
     queryFn: () => getShoppingList(),
+  })
+
+/**
+ * The household's ingredient catalog for the add-box autocomplete. Preloaded
+ * (route loader) and cached with a long staleTime — the catalog changes rarely,
+ * and saving a new ingredient invalidates this key explicitly.
+ */
+export const ingredientsQueryOptions = () =>
+  queryOptions({
+    queryKey: ['ingredients'] as const,
+    queryFn: () => listIngredients(),
+    staleTime: 5 * 60 * 1000,
   })
 
 /** Sharing overview: household members, sent invites, invites awaiting me. */

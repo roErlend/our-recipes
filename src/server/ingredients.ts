@@ -1,6 +1,5 @@
 import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
 import { and, eq, isNull, or } from 'drizzle-orm'
-import { z } from 'zod'
 
 import { db } from '@/db'
 import { ingredientCatalog } from '@/db/schema'
@@ -8,8 +7,10 @@ import { DEFAULT_CATEGORY, normalizeCategory } from '@/lib/categories'
 import { requireUser } from '@/server/auth'
 import { accessibleScope } from '@/server/sharing'
 
-export interface IngredientSuggestion {
+export interface CatalogIngredient {
   name: string
+  /** Lower-cased lookup key, used for client-side filtering/ranking. */
+  key: string
   category: string
   /** True for the household's own saved ingredients (vs. shared stock). */
   isHousehold: boolean
@@ -18,6 +19,28 @@ export interface IngredientSuggestion {
 /** Lower-cased lookup/dedup key for an ingredient name. */
 export function nameKey(name: string) {
   return name.trim().toLowerCase()
+}
+
+/**
+ * Pure, client-safe autocomplete ranking over a preloaded catalog: prefix
+ * matches first, then shorter names, then alphabetical. The whole catalog is
+ * small, so filtering happens on the client (no per-keystroke round-trip).
+ */
+export function filterIngredients(
+  all: CatalogIngredient[],
+  query: string,
+  limit = 8,
+): CatalogIngredient[] {
+  const q = nameKey(query)
+  const matches = q ? all.filter((c) => c.key.includes(q)) : all
+  return [...matches]
+    .sort((a, b) => {
+      const ap = a.key.startsWith(q) ? 0 : 1
+      const bp = b.key.startsWith(q) ? 0 : 1
+      if (ap !== bp) return ap - bp
+      return a.name.localeCompare(b.name, 'nb')
+    })
+    .slice(0, limit)
 }
 
 /**
@@ -61,40 +84,22 @@ export const catalogForScope = createServerOnlyFn(async (householdId: string) =>
   return byKey
 })
 
-/** Autocomplete: ingredients matching `query`, prefix matches ranked first. */
-export const searchIngredients = createServerFn({ method: 'GET' })
-  .validator((input: { query: string; limit?: number }) =>
-    z
-      .object({
-        query: z.string().max(100),
-        limit: z.number().int().min(1).max(20).optional(),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data }): Promise<IngredientSuggestion[]> => {
+/**
+ * The full ingredient catalog visible to the current household (stock +
+ * household), for the add-box autocomplete. Preloaded and cached via TanStack
+ * Query, then filtered client-side with {@link filterIngredients}.
+ */
+export const listIngredients = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<CatalogIngredient[]> => {
     const user = await requireUser()
     const { householdId } = await accessibleScope(user.id)
-    const q = nameKey(data.query)
-    const limit = data.limit ?? 8
 
     const catalog = await catalogForScope(householdId)
-    const all = [...catalog.entries()].map(([key, v]) => ({ key, ...v }))
-
-    const matches = q
-      ? all.filter((c) => c.key.includes(q))
-      : all
-    matches.sort((a, b) => {
-      // Prefix matches first, then shorter names, then alphabetical.
-      const ap = a.key.startsWith(q) ? 0 : 1
-      const bp = b.key.startsWith(q) ? 0 : 1
-      if (ap !== bp) return ap - bp
-      return a.name.localeCompare(b.name, 'nb')
-    })
-
-    return matches
-      .slice(0, limit)
-      .map(({ name, category, isHousehold }) => ({ name, category, isHousehold }))
-  })
+    return [...catalog.entries()]
+      .map(([key, v]) => ({ key, ...v }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'nb'))
+  },
+)
 
 /**
  * Save an ingredient to the household catalog (idempotent). Used when the user
