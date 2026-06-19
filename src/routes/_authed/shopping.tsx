@@ -173,6 +173,7 @@ function ShoppingView({
                   isSelected={checked}
                   onChange={(value) => onToggle(item, value)}
                   aria-label={`Merk ${item.name} som kjøpt`}
+                  className="-m-2 p-2"
                 />
                 <div className="flex-1">
                   <span

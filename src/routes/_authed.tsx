@@ -43,6 +43,12 @@ const navLinkClass = [
 
 const activeNavLinkClass = 'bg-white text-brand-700 shadow-sm hover:bg-white'
 
+const NAV = [
+  { to: '/recipes', label: 'Oppskrifter', icon: ChefHat, activeOptions: { exact: false } },
+  { to: '/shopping', label: 'Handleliste', icon: ListChecks, activeOptions: undefined },
+  { to: '/deling', label: 'Deling', icon: UserPlus, activeOptions: undefined },
+] as const
+
 function AuthedLayout() {
   const { user } = Route.useRouteContext()
   const router = useRouter()
@@ -59,63 +65,72 @@ function AuthedLayout() {
         <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3">
           <Link
             to="/recipes"
-            className="mr-2 inline-flex items-center gap-2 text-lg font-bold text-stone-900"
+            className="inline-flex min-w-0 items-center gap-2 text-lg font-bold text-stone-900"
           >
-            <UtensilsCrossed className="h-5 w-5 text-brand-600" />
-            Våre oppskrifter
+            <UtensilsCrossed className="h-5 w-5 shrink-0 text-brand-600" />
+            <span className="truncate">Våre oppskrifter</span>
           </Link>
 
-          {/* preload="render" warms each section's code + data in the
-              background right after the nav mounts, so switching between the
-              three pages is instant once warmed (helps most on slow/distant
-              hosting where on-hover intent preload doesn't finish in time). */}
-          <nav className="flex items-center gap-1">
-            <Link
-              to="/recipes"
-              preload="render"
-              className={navLinkClass}
-              activeProps={{ className: `${navLinkClass} ${activeNavLinkClass}` }}
-              activeOptions={{ exact: false }}
-            >
-              <ChefHat className="h-4 w-4" />
-              Oppskrifter
-            </Link>
-            <Link
-              to="/shopping"
-              preload="render"
-              className={navLinkClass}
-              activeProps={{ className: `${navLinkClass} ${activeNavLinkClass}` }}
-            >
-              <ListChecks className="h-4 w-4" />
-              Handleliste
-            </Link>
-            <Link
-              to="/deling"
-              preload="render"
-              className={navLinkClass}
-              activeProps={{ className: `${navLinkClass} ${activeNavLinkClass}` }}
-            >
-              <UserPlus className="h-4 w-4" />
-              Deling
-            </Link>
+          {/* Desktop nav. On mobile this collapses to the bottom tab bar below.
+              preload="render" warms each section's code + data in the background. */}
+          <nav className="ml-4 hidden items-center gap-1 sm:flex">
+            {NAV.map(({ to, label, icon: Icon, activeOptions }) => (
+              <Link
+                key={to}
+                to={to}
+                preload="render"
+                className={navLinkClass}
+                activeProps={{ className: `${navLinkClass} ${activeNavLinkClass}` }}
+                activeOptions={activeOptions}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </Link>
+            ))}
           </nav>
 
           <div className="ml-auto flex items-center gap-3">
-            <span className="hidden text-sm text-stone-500 sm:inline">
+            <span className="hidden text-sm text-stone-500 md:inline">
               {user.name || user.email}
             </span>
-            <Button variant="ghost" size="sm" onPress={handleSignOut}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={handleSignOut}
+              className="shrink-0"
+            >
               <LogOut className="h-4 w-4" />
-              Logg ut
+              <span className="hidden sm:inline">Logg ut</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className="mx-auto max-w-5xl px-4 py-8 pb-[calc(4.5rem_+_env(safe-area-inset-bottom))] sm:pb-8">
         <PendingInvites />
         <Outlet />
       </main>
+
+      {/* Mobile bottom tab bar — the primary navigation on phones. */}
+      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t border-stone-200 bg-stone-100/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
+        {NAV.map(({ to, label, icon: Icon, activeOptions }) => {
+          const tab =
+            'flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium'
+          return (
+            <Link
+              key={to}
+              to={to}
+              preload="render"
+              className={`${tab} text-stone-500`}
+              activeProps={{ className: `${tab} text-brand-700` }}
+              activeOptions={activeOptions}
+            >
+              <Icon className="h-5 w-5" />
+              {label}
+            </Link>
+          )
+        })}
+      </nav>
     </div>
   )
 }

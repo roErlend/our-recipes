@@ -147,6 +147,8 @@ function RecipeCard({
           isSelected={recipe.isActive}
           onChange={(checked) => onToggleActive(recipe.id, checked)}
           aria-label={`Merk ${recipe.title} som aktiv denne uken`}
+          // Bigger touch target on mobile without shifting the layout.
+          className="-m-2 p-2"
         />
       </div>
 
