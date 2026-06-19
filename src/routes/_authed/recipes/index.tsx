@@ -1,11 +1,10 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   useMutation,
   useQueryClient,
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { useQueryState } from 'nuqs'
 import {
   Check,
   ExternalLink,
@@ -26,6 +25,14 @@ import {
 } from '@/server/shopping'
 
 export const Route = createFileRoute('/_authed/recipes/')({
+  // Keep the search term in the URL (?q=…) so it survives back-navigation from a
+  // recipe and is deep-linkable. The loader doesn't read `q`, so typing only
+  // re-filters client-side — it never re-runs the loader. `q` is optional (and
+  // omitted when empty) so other links to /recipes needn't pass it.
+  validateSearch: (search: Record<string, unknown>): { q?: string } => {
+    const q = typeof search.q === 'string' ? search.q : ''
+    return q ? { q } : {}
+  },
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(recipesQueryOptions()),
   component: RecipesPage,
@@ -34,10 +41,25 @@ export const Route = createFileRoute('/_authed/recipes/')({
 function RecipesPage() {
   const queryClient = useQueryClient()
   const { data: recipes } = useSuspenseQuery(recipesQueryOptions())
-  // Keep the search term in the URL (?q=…) so it survives back-navigation from a
-  // recipe. Default '' drops the param entirely; replace-history avoids a new
-  // entry per keystroke; shallow keeps it client-side (no loader re-run).
-  const [search, setSearch] = useQueryState('q', { defaultValue: '' })
+  const navigate = Route.useNavigate()
+  // The input is driven by local state so typing is always instant; binding it
+  // straight to the async URL state drops fast keystrokes. We mirror the term
+  // into the URL (?q=…), debounced + replace-history, so it survives back-nav
+  // from a recipe and is deep-linkable without spamming history. The URL `q` is
+  // only read to seed state on mount (incl. when this route remounts on
+  // back-navigation); local state is authoritative thereafter.
+  const { q: initialSearch = '' } = Route.useSearch()
+  const [search, setSearch] = useState(initialSearch)
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      void navigate({
+        search: (prev) => ({ ...prev, q: search || undefined }),
+        replace: true,
+      })
+    }, 200)
+    return () => clearTimeout(id)
+  }, [search, navigate])
 
   const recipesKey = recipesQueryOptions().queryKey
 
