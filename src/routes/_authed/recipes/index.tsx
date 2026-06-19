@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
+import { NewRecipeMenu } from '@/components/NewRecipeMenu'
 import { recipesQueryOptions, shoppingQueryOptions } from '@/lib/queries'
 import { type RecipeListItem } from '@/server/recipes'
 import {
@@ -119,12 +120,7 @@ function RecipesPage() {
             {recipes.length} lagret · {onListCount} på handlelisten
           </p>
         </div>
-        <Link to="/recipes/new">
-          <Button>
-            <Plus className="h-4 w-4" />
-            Ny oppskrift
-          </Button>
-        </Link>
+        <NewRecipeMenu />
       </div>
 
       <div className="relative">

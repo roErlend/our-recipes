@@ -89,6 +89,79 @@ export const emptyRecipeForm = (): RecipeFormValues => ({
   ingredients: [emptyIngredient()],
 })
 
+const str = (v: unknown) =>
+  v == null ? '' : typeof v === 'string' ? v : String(v)
+
+/** Flatten various step shapes into one numbered text block for `instructions`. */
+function stepsToText(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (Array.isArray(value)) {
+    return value
+      .map((s) =>
+        typeof s === 'string'
+          ? s
+          : str((s as { text?: unknown; name?: unknown })?.text ?? (s as { name?: unknown })?.name),
+      )
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s, i) => `${i + 1}. ${s.replace(/^\s*(steg|trinn|step)?\s*\d+[.):]?\s*/i, '')}`)
+      .join('\n')
+  }
+  return ''
+}
+
+/**
+ * Parse a full-recipe JSON object (e.g. from the `recipe-url-to-json` skill)
+ * into form values. Lenient: every field is optional except a non-empty title,
+ * and it accepts `instructions` as a string or `steps`/`instructions` as an
+ * array of strings/step objects.
+ */
+export function parseRecipeImport(
+  raw: string,
+): { ok: true; values: RecipeFormValues } | { ok: false; error: string } {
+  let data: unknown
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    return { ok: false, error: 'Ugyldig JSON – sjekk at hele objektet er limt inn.' }
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { ok: false, error: 'Forventet et JSON-objekt med en oppskrift.' }
+  }
+  const o = data as Record<string, unknown>
+  const title = str(o.title).trim()
+  if (!title) return { ok: false, error: 'Oppskriften mangler en tittel.' }
+
+  const rawIngredients = Array.isArray(o.ingredients) ? o.ingredients : []
+  const ingredients: RecipeFormIngredient[] = rawIngredients
+    .map((i) => {
+      const ing = (i ?? {}) as Record<string, unknown>
+      const qty = ing.quantity ?? ing.amount ?? ing.qty
+      return {
+        name: str(ing.name ?? ing.ingredient).trim(),
+        quantity: qty == null ? '' : str(qty),
+        unit: str(ing.unit).trim(),
+        note: str(ing.note).trim(),
+      }
+    })
+    .filter((i) => i.name !== '')
+
+  return {
+    ok: true,
+    values: {
+      title,
+      description: str(o.description).trim(),
+      sourceUrl: str(o.sourceUrl ?? o.source_url ?? o.url).trim(),
+      imageUrl: str(o.imageUrl ?? o.image_url ?? o.image).trim(),
+      uploadedImageUrl: null,
+      instructions: stepsToText(o.instructions ?? o.steps),
+      servings: o.servings == null ? '' : str(o.servings),
+      tags: Array.isArray(o.tags) ? o.tags.map(str).map((t) => t.trim()).filter(Boolean) : [],
+      ingredients: ingredients.length ? ingredients : [emptyIngredient()],
+    },
+  }
+}
+
 function toSubmit(values: RecipeFormValues, img: ImageState): RecipeSubmitValues {
   const trimmed = (s: string) => (s.trim() === '' ? null : s.trim())
 
