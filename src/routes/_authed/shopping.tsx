@@ -12,7 +12,11 @@ import { AddShoppingItem } from '@/components/AddShoppingItem'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { categoryRank, DEFAULT_CATEGORY } from '@/lib/categories'
-import { ingredientsQueryOptions, shoppingQueryOptions } from '@/lib/queries'
+import {
+  categoriesQueryOptions,
+  ingredientsQueryOptions,
+  shoppingQueryOptions,
+} from '@/lib/queries'
 import { shoppingChecksCollection } from '@/lib/shopping-collection'
 import { type CatalogIngredient } from '@/server/ingredients'
 import {
@@ -29,6 +33,7 @@ export const Route = createFileRoute('/_authed/shopping')({
       context.queryClient.ensureQueryData(shoppingQueryOptions()),
       // Preload the catalog so autocomplete is instant on first keystroke.
       context.queryClient.ensureQueryData(ingredientsQueryOptions()),
+      context.queryClient.ensureQueryData(categoriesQueryOptions()),
     ]),
   component: ShoppingPage,
 })

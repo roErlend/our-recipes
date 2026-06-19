@@ -2,8 +2,13 @@ import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
 import { and, eq, isNull, or } from 'drizzle-orm'
 
 import { db } from '@/db'
-import { ingredientCatalog } from '@/db/schema'
-import { DEFAULT_CATEGORY, normalizeCategory } from '@/lib/categories'
+import { ingredientCatalog, ingredientCategory } from '@/db/schema'
+import {
+  categoryRank,
+  DEFAULT_CATEGORY,
+  INGREDIENT_CATEGORIES,
+  normalizeCategory,
+} from '@/lib/categories'
 import { requireUser } from '@/server/auth'
 import { accessibleScope } from '@/server/sharing'
 
@@ -83,6 +88,26 @@ export const catalogForScope = createServerOnlyFn(async (householdId: string) =>
   }
   return byKey
 })
+
+/**
+ * All category names available app-wide: the canonical list ∪ admin-created
+ * categories ({@link ingredientCategory}), ordered the way the shopping list
+ * groups them. Used to populate category pickers; callers may additionally fold
+ * in categories found on their own ingredient rows.
+ */
+export const listCategories = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<string[]> => {
+    await requireUser()
+    const rows = await db
+      .select({ name: ingredientCategory.name })
+      .from(ingredientCategory)
+    const set = new Set<string>(INGREDIENT_CATEGORIES)
+    for (const r of rows) set.add(r.name)
+    return [...set].sort(
+      (a, b) => categoryRank(a) - categoryRank(b) || a.localeCompare(b, 'nb'),
+    )
+  },
+)
 
 /**
  * The full ingredient catalog visible to the current household (stock +

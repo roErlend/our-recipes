@@ -337,6 +337,19 @@ export const ingredientCatalog = pgTable(
   ],
 )
 
+/**
+ * Admin-created categories that persist on their own (independently of whether
+ * any ingredient currently uses them). The full set of categories shown in the
+ * app is the canonical list in `src/lib/categories.ts` ∪ these rows ∪ whatever
+ * categories appear on {@link ingredientCatalog} rows. Global (not scoped).
+ */
+export const ingredientCategory = pgTable('ingredient_category', {
+  name: text('name').primaryKey(),
+  createdAt: timestamp('created_at')
+    .$defaultFn(() => new Date())
+    .notNull(),
+})
+
 /* -------------------------------------------------------------------------- */
 /*  Relations                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -368,3 +381,4 @@ export type RecipeImage = typeof recipeImage.$inferSelect
 export type RecipeRating = typeof recipeRating.$inferSelect
 export type IngredientCatalog = typeof ingredientCatalog.$inferSelect
 export type NewIngredientCatalog = typeof ingredientCatalog.$inferInsert
+export type IngredientCategoryRow = typeof ingredientCategory.$inferSelect

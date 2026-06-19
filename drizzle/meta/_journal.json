@@ -71,6 +71,13 @@
       "when": 1781877453907,
       "tag": "0009_broken_riptide",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781879891619,
+      "tag": "0010_ordinary_payback",
+      "breakpoints": true
     }
   ]
 }

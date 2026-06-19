@@ -5,20 +5,20 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { Check, Pencil, Search, Shield, Trash2, X } from 'lucide-react'
+import { Check, Pencil, Plus, Search, Shield, Trash2, X } from 'lucide-react'
 
+import { Button } from '@/components/ui/Button'
 import { isAdminEmail } from '@/lib/admin'
-import {
-  categoryRank,
-  DEFAULT_CATEGORY,
-  INGREDIENT_CATEGORIES,
-} from '@/lib/categories'
+import { categoryRank, DEFAULT_CATEGORY } from '@/lib/categories'
 import {
   adminIngredientsQueryOptions,
+  categoriesQueryOptions,
   ingredientsQueryOptions,
   shoppingQueryOptions,
 } from '@/lib/queries'
 import {
+  adminCreateCategory,
+  adminCreateIngredient,
   adminDeleteCategory,
   adminDeleteIngredient,
   adminRenameCategory,
@@ -33,7 +33,10 @@ export const Route = createFileRoute('/_authed/admin')({
     }
   },
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData(adminIngredientsQueryOptions()),
+    Promise.all([
+      context.queryClient.ensureQueryData(adminIngredientsQueryOptions()),
+      context.queryClient.ensureQueryData(categoriesQueryOptions()),
+    ]),
   component: AdminPage,
 })
 
@@ -43,20 +46,23 @@ function useAdminInvalidate() {
   return () => {
     queryClient.invalidateQueries({ queryKey: adminIngredientsQueryOptions().queryKey })
     queryClient.invalidateQueries({ queryKey: ingredientsQueryOptions().queryKey })
+    queryClient.invalidateQueries({ queryKey: categoriesQueryOptions().queryKey })
     queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
   }
 }
 
 function AdminPage() {
   const { data: ingredients } = useSuspenseQuery(adminIngredientsQueryOptions())
+  const { data: baseCategories } = useSuspenseQuery(categoriesQueryOptions())
 
+  // All category names = canonical/admin-created ∪ any used on rows.
   const categories = useMemo(() => {
-    const set = new Set<string>(INGREDIENT_CATEGORIES)
+    const set = new Set<string>(baseCategories)
     for (const i of ingredients) set.add(i.category)
     return [...set].sort(
       (a, b) => categoryRank(a) - categoryRank(b) || a.localeCompare(b, 'nb'),
     )
-  }, [ingredients])
+  }, [baseCategories, ingredients])
 
   return (
     <div className="flex flex-col gap-8">
@@ -70,7 +76,7 @@ function AdminPage() {
         </div>
       </div>
 
-      <CategoriesSection ingredients={ingredients} />
+      <CategoriesSection ingredients={ingredients} categories={categories} />
       <IngredientsSection ingredients={ingredients} categories={categories} />
     </div>
   )
@@ -78,17 +84,28 @@ function AdminPage() {
 
 /* ------------------------------ categories ------------------------------ */
 
-function CategoriesSection({ ingredients }: { ingredients: AdminIngredient[] }) {
+function CategoriesSection({
+  ingredients,
+  categories,
+}: {
+  ingredients: AdminIngredient[]
+  categories: string[]
+}) {
   const invalidate = useAdminInvalidate()
 
+  // Every category name (incl. empty ones) with its ingredient count.
   const counts = useMemo(() => {
-    const map = new Map<string, number>()
+    const map = new Map<string, number>(categories.map((c) => [c, 0]))
     for (const i of ingredients) map.set(i.category, (map.get(i.category) ?? 0) + 1)
     return [...map.entries()].sort(
       (a, b) => categoryRank(a[0]) - categoryRank(b[0]) || a[0].localeCompare(b[0], 'nb'),
     )
-  }, [ingredients])
+  }, [ingredients, categories])
 
+  const create = useMutation({
+    mutationFn: (name: string) => adminCreateCategory({ data: { name } }),
+    onSuccess: invalidate,
+  })
   const rename = useMutation({
     mutationFn: (vars: { from: string; to: string }) =>
       adminRenameCategory({ data: vars }),
@@ -106,6 +123,13 @@ function CategoriesSection({ ingredients }: { ingredients: AdminIngredient[] }) 
         Endre navn på en kategori (oppdaterer alle varene), eller slett den (varene
         flyttes til «{DEFAULT_CATEGORY}»).
       </p>
+      <AddRow
+        placeholder="Ny kategori…"
+        buttonLabel="Legg til kategori"
+        maxLength={60}
+        busy={create.isPending}
+        onAdd={(name) => create.mutate(name)}
+      />
       <ul className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
         {counts.map(([category, count]) => (
           <CategoryRow
@@ -119,6 +143,45 @@ function CategoriesSection({ ingredients }: { ingredients: AdminIngredient[] }) 
         ))}
       </ul>
     </section>
+  )
+}
+
+/** A simple "name + add" form row (used for new categories). */
+function AddRow({
+  placeholder,
+  buttonLabel,
+  maxLength,
+  busy,
+  onAdd,
+}: {
+  placeholder: string
+  buttonLabel: string
+  maxLength: number
+  busy: boolean
+  onAdd: (value: string) => void
+}) {
+  const [value, setValue] = useState('')
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const v = value.trim()
+    if (!v) return
+    onAdd(v)
+    setValue('')
+  }
+  return (
+    <form onSubmit={submit} className="flex items-center gap-2">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        className="flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+      />
+      <Button type="submit" size="sm" isDisabled={!value.trim() || busy}>
+        <Plus className="h-4 w-4" />
+        {buttonLabel}
+      </Button>
+    </form>
   )
 }
 
@@ -216,6 +279,11 @@ function IngredientsSection({
   const invalidate = useAdminInvalidate()
   const [search, setSearch] = useState('')
 
+  const create = useMutation({
+    mutationFn: (vars: { name: string; category: string }) =>
+      adminCreateIngredient({ data: vars }),
+    onSuccess: invalidate,
+  })
   const update = useMutation({
     mutationFn: (vars: { id: string; name: string; category: string }) =>
       adminUpdateIngredient({ data: vars }),
@@ -261,6 +329,12 @@ function IngredientsSection({
         ))}
       </datalist>
 
+      <NewIngredientForm
+        categories={categories}
+        busy={create.isPending}
+        onCreate={(name, category) => create.mutate({ name, category })}
+      />
+
       {filtered.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-stone-300 bg-white/50 py-10 text-center text-sm text-stone-500">
           Ingen ingredienser samsvarer.
@@ -281,6 +355,60 @@ function IngredientsSection({
         </ul>
       )}
     </section>
+  )
+}
+
+function NewIngredientForm({
+  categories,
+  busy,
+  onCreate,
+}: {
+  categories: string[]
+  busy: boolean
+  onCreate: (name: string, category: string) => void
+}) {
+  const [name, setName] = useState('')
+  const [category, setCategory] = useState<string>(DEFAULT_CATEGORY)
+  const canAdd = name.trim() !== '' && category.trim() !== ''
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canAdd) return
+    onCreate(name.trim(), category.trim())
+    setName('')
+    setCategory(DEFAULT_CATEGORY)
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-stone-300 bg-white/50 p-3"
+    >
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Ny ingrediens (standard)…"
+        maxLength={200}
+        aria-label="Navn på ny ingrediens"
+        className="min-w-0 flex-1 rounded-lg border border-stone-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+      />
+      <select
+        value={category}
+        onChange={(e) => setCategory(e.target.value)}
+        aria-label="Kategori for ny ingrediens"
+        className="w-44 rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-sm text-stone-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+      >
+        {categories.map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+      </select>
+      <Button type="submit" size="sm" isDisabled={!canAdd || busy}>
+        <Plus className="h-4 w-4" />
+        Legg til
+      </Button>
+    </form>
   )
 }
 

@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 
 import { adminListIngredients } from '@/server/admin'
-import { listIngredients } from '@/server/ingredients'
+import { listCategories, listIngredients } from '@/server/ingredients'
 import { getRecipe, listRecipes } from '@/server/recipes'
 import { getShoppingList } from '@/server/shopping'
 import { getPendingInvites, getSharing } from '@/server/sharing'
@@ -36,6 +36,14 @@ export const ingredientsQueryOptions = () =>
   queryOptions({
     queryKey: ['ingredients'] as const,
     queryFn: () => listIngredients(),
+    staleTime: 5 * 60 * 1000,
+  })
+
+/** All available category names (canonical ∪ admin-created). */
+export const categoriesQueryOptions = () =>
+  queryOptions({
+    queryKey: ['categories'] as const,
+    queryFn: () => listCategories(),
     staleTime: 5 * 60 * 1000,
   })
 

@@ -7,7 +7,10 @@ import {
   DEFAULT_CATEGORY,
   INGREDIENT_CATEGORIES,
 } from '@/lib/categories'
-import { ingredientsQueryOptions } from '@/lib/queries'
+import {
+  categoriesQueryOptions,
+  ingredientsQueryOptions,
+} from '@/lib/queries'
 import {
   filterIngredients,
   type CatalogIngredient,
@@ -37,6 +40,8 @@ export function AddShoppingItem({
   // Whole catalog, preloaded in the route loader and cached by TanStack Query —
   // filtering happens locally, so suggestions appear instantly with no fetch.
   const { data: catalog = [] } = useQuery(ingredientsQueryOptions())
+  const { data: baseCategories = INGREDIENT_CATEGORIES as readonly string[] } =
+    useQuery(categoriesQueryOptions())
 
   const trimmed = value.trim()
   const key = norm(value)
@@ -50,12 +55,12 @@ export function AddShoppingItem({
   // Canonical categories plus any custom ones the household already uses,
   // ordered the same way the shopping list groups them.
   const categories = useMemo(() => {
-    const set = new Set<string>(INGREDIENT_CATEGORIES)
+    const set = new Set<string>(baseCategories)
     for (const c of catalog) set.add(c.category)
     return [...set].sort(
       (a, b) => categoryRank(a) - categoryRank(b) || a.localeCompare(b, 'nb'),
     )
-  }, [catalog])
+  }, [baseCategories, catalog])
 
   const reset = () => {
     setValue('')
