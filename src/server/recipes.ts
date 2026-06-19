@@ -3,7 +3,7 @@ import { and, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '@/db'
-import { ingredient, recipe, shoppingEntry } from '@/db/schema'
+import { ingredient, recipe, recipeImage, shoppingEntry } from '@/db/schema'
 import { requireUser } from '@/server/auth'
 import { accessibleScope } from '@/server/sharing'
 
@@ -44,6 +44,15 @@ const recipeInput = z.object({
   servings: z.number().int().positive().max(100).nullable().optional(),
   tags: z.array(z.string().trim().min(1)).max(30).default([]),
   ingredients: z.array(ingredientInput).max(100).default([]),
+  /** A new uploaded image as a `data:image/…;base64,…` URL (already resized client-side). */
+  imageUpload: z
+    .string()
+    .startsWith('data:image/')
+    .max(10_000_000)
+    .nullable()
+    .optional(),
+  /** Drop any stored uploaded image (set when the user removes it or switches to a URL). */
+  clearUploadedImage: z.boolean().optional(),
 })
 
 const emptyToNull = (v: string | null | undefined) =>
@@ -106,13 +115,25 @@ export const getRecipe = createServerFn({ method: 'GET' })
       },
     })
     if (!row || !ownerIds.includes(row.ownerId)) return null
-    const onList = await recipesOnShoppingList(householdId)
+    const [onList, [img]] = await Promise.all([
+      recipesOnShoppingList(householdId),
+      db
+        .select({ updatedAt: recipeImage.updatedAt })
+        .from(recipeImage)
+        .where(eq(recipeImage.recipeId, id))
+        .limit(1),
+    ])
     const { owner, ...rest } = row
     return {
       ...rest,
       isOwner: row.ownerId === user.id,
       ownerName: owner?.name || owner?.email || null,
       inShoppingList: onList.has(row.id),
+      // Internal URL for an uploaded image (cache-busted by its updated time),
+      // or null when the recipe has no upload (it may still have an image_url).
+      uploadedImageUrl: img
+        ? `/api/recipes/${id}/image?v=${img.updatedAt.getTime()}`
+        : null,
     }
   })
 
@@ -146,6 +167,54 @@ function ingredientRows(recipeId: string, items: IngredientInputs) {
   }))
 }
 
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024
+
+/** Decode a `data:image/…;base64,…` URL into a content type + raw bytes. */
+function parseImageDataUrl(dataUrl: string) {
+  const match = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl)
+  if (!match) throw new Error('Ugyldig bildedata.')
+  const contentType = match[1].toLowerCase()
+  if (!contentType.startsWith('image/')) throw new Error('Filen må være et bilde.')
+  const data = Buffer.from(match[2], 'base64')
+  if (data.byteLength === 0) throw new Error('Bildet er tomt.')
+  if (data.byteLength > MAX_IMAGE_BYTES) {
+    throw new Error('Bildet er for stort (maks 4 MB).')
+  }
+  return { contentType, data }
+}
+
+/** Apply an image change for a recipe within a transaction: store/replace an
+ *  uploaded image, or clear a stored one. No-op when neither is requested. */
+async function applyRecipeImage(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  recipeId: string,
+  opts: { imageUpload?: string | null; clearUploadedImage?: boolean },
+) {
+  if (opts.imageUpload) {
+    const { contentType, data } = parseImageDataUrl(opts.imageUpload)
+    await tx
+      .insert(recipeImage)
+      .values({
+        recipeId,
+        contentType,
+        data,
+        byteSize: data.byteLength,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: recipeImage.recipeId,
+        set: {
+          contentType,
+          data,
+          byteSize: data.byteLength,
+          updatedAt: new Date(),
+        },
+      })
+  } else if (opts.clearUploadedImage) {
+    await tx.delete(recipeImage).where(eq(recipeImage.recipeId, recipeId))
+  }
+}
+
 export const createRecipe = createServerFn({ method: 'POST' })
   .validator((input: unknown) => recipeInput.parse(input))
   .handler(async ({ data }) => {
@@ -168,6 +237,7 @@ export const createRecipe = createServerFn({ method: 'POST' })
       if (data.ingredients.length) {
         await tx.insert(ingredient).values(ingredientRows(row.id, data.ingredients))
       }
+      await applyRecipeImage(tx, row.id, data)
       return row
     })
 
@@ -201,6 +271,10 @@ export const updateRecipe = createServerFn({ method: 'POST' })
       if (ingredients.length) {
         await tx.insert(ingredient).values(ingredientRows(id, ingredients))
       }
+      await applyRecipeImage(tx, id, {
+        imageUpload: fields.imageUpload,
+        clearUploadedImage: fields.clearUploadedImage,
+      })
     })
 
     return { id }

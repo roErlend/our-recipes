@@ -43,12 +43,27 @@ export const Route = createRootRouteWithContext<{
   shellComponent: RootDocument,
 })
 
-/** Register the service worker (client + production only). */
+/**
+ * In production: register the service worker.
+ * In development: do the opposite — actively unregister any service worker and
+ * drop its caches. A SW registered by an earlier `vite preview`/production build
+ * on this same localhost origin keeps controlling the dev site and serves stale
+ * assets/HTML that survive hard refreshes (and confusingly breaks things like
+ * freshly added image routes). This makes dev self-heal on next load.
+ */
 function useRegisterServiceWorker() {
   useEffect(() => {
-    if (!import.meta.env.PROD) return
     if (!('serviceWorker' in navigator)) return
-    void navigator.serviceWorker.register('/sw.js')
+    if (import.meta.env.PROD) {
+      void navigator.serviceWorker.register('/sw.js')
+      return
+    }
+    void navigator.serviceWorker
+      .getRegistrations()
+      .then((regs) => regs.forEach((r) => void r.unregister()))
+    if ('caches' in window) {
+      void caches.keys().then((keys) => keys.forEach((k) => void caches.delete(k)))
+    }
   }, [])
 }
 

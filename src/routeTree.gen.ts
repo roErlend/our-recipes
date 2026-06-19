@@ -19,6 +19,7 @@ import { Route as ApiShapesShoppingRouteImport } from './routes/api/shapes/shopp
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AuthedRecipesNewRouteImport } from './routes/_authed/recipes/new'
 import { Route as AuthedRecipesRecipeIdRouteImport } from './routes/_authed/recipes/$recipeId'
+import { Route as ApiRecipesRecipeIdImageRouteImport } from './routes/api/recipes/$recipeId/image'
 import { Route as AuthedRecipesRecipeIdEditRouteImport } from './routes/_authed/recipes/$recipeId_.edit'
 
 const LoginRoute = LoginRouteImport.update({
@@ -70,6 +71,11 @@ const AuthedRecipesRecipeIdRoute = AuthedRecipesRecipeIdRouteImport.update({
   path: '/recipes/$recipeId',
   getParentRoute: () => AuthedRoute,
 } as any)
+const ApiRecipesRecipeIdImageRoute = ApiRecipesRecipeIdImageRouteImport.update({
+  id: '/api/recipes/$recipeId/image',
+  path: '/api/recipes/$recipeId/image',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthedRecipesRecipeIdEditRoute =
   AuthedRecipesRecipeIdEditRouteImport.update({
     id: '/recipes/$recipeId_/edit',
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/api/shapes/shopping': typeof ApiShapesShoppingRoute
   '/recipes/': typeof AuthedRecipesIndexRoute
   '/recipes/$recipeId/edit': typeof AuthedRecipesRecipeIdEditRoute
+  '/api/recipes/$recipeId/image': typeof ApiRecipesRecipeIdImageRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByTo {
   '/api/shapes/shopping': typeof ApiShapesShoppingRoute
   '/recipes': typeof AuthedRecipesIndexRoute
   '/recipes/$recipeId/edit': typeof AuthedRecipesRecipeIdEditRoute
+  '/api/recipes/$recipeId/image': typeof ApiRecipesRecipeIdImageRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -114,6 +122,7 @@ export interface FileRoutesById {
   '/api/shapes/shopping': typeof ApiShapesShoppingRoute
   '/_authed/recipes/': typeof AuthedRecipesIndexRoute
   '/_authed/recipes/$recipeId_/edit': typeof AuthedRecipesRecipeIdEditRoute
+  '/api/recipes/$recipeId/image': typeof ApiRecipesRecipeIdImageRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -128,6 +137,7 @@ export interface FileRouteTypes {
     | '/api/shapes/shopping'
     | '/recipes/'
     | '/recipes/$recipeId/edit'
+    | '/api/recipes/$recipeId/image'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -140,6 +150,7 @@ export interface FileRouteTypes {
     | '/api/shapes/shopping'
     | '/recipes'
     | '/recipes/$recipeId/edit'
+    | '/api/recipes/$recipeId/image'
   id:
     | '__root__'
     | '/'
@@ -153,6 +164,7 @@ export interface FileRouteTypes {
     | '/api/shapes/shopping'
     | '/_authed/recipes/'
     | '/_authed/recipes/$recipeId_/edit'
+    | '/api/recipes/$recipeId/image'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -161,6 +173,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiShapesShoppingRoute: typeof ApiShapesShoppingRoute
+  ApiRecipesRecipeIdImageRoute: typeof ApiRecipesRecipeIdImageRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -235,6 +248,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedRecipesRecipeIdRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/api/recipes/$recipeId/image': {
+      id: '/api/recipes/$recipeId/image'
+      path: '/api/recipes/$recipeId/image'
+      fullPath: '/api/recipes/$recipeId/image'
+      preLoaderRoute: typeof ApiRecipesRecipeIdImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authed/recipes/$recipeId_/edit': {
       id: '/_authed/recipes/$recipeId_/edit'
       path: '/recipes/$recipeId/edit'
@@ -272,6 +292,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiShapesShoppingRoute: ApiShapesShoppingRoute,
+  ApiRecipesRecipeIdImageRoute: ApiRecipesRecipeIdImageRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

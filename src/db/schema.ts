@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm'
 import {
   boolean,
+  customType,
   doublePrecision,
   index,
   integer,
@@ -10,6 +11,13 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core'
+
+/** Postgres `bytea` — raw binary, used for uploaded recipe images. */
+const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
+  dataType() {
+    return 'bytea'
+  },
+})
 
 /* -------------------------------------------------------------------------- */
 /*  better-auth tables                                                        */
@@ -236,6 +244,27 @@ export const shoppingEntry = pgTable(
   ],
 )
 
+/**
+ * An uploaded image for a recipe, stored as bytes in Postgres (one per recipe).
+ * Kept in its own table so the blob is never loaded by ordinary recipe queries —
+ * it's served only through the `/api/recipes/$recipeId/image` route. A recipe
+ * either has an uploaded image here OR an external `recipe.image_url`, never both
+ * (the form keeps them mutually exclusive).
+ */
+export const recipeImage = pgTable('recipe_image', {
+  recipeId: text('recipe_id')
+    .primaryKey()
+    .references(() => recipe.id, { onDelete: 'cascade' }),
+  contentType: text('content_type').notNull(),
+  data: bytea('data').notNull(),
+  byteSize: integer('byte_size').notNull(),
+  // timestamptz so the cache-busting `?v=<updatedAt>` is an unambiguous instant
+  // (a plain `timestamp` round-trips with a timezone offset between drivers).
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .$defaultFn(() => new Date())
+    .notNull(),
+})
+
 /* -------------------------------------------------------------------------- */
 /*  Relations                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -263,3 +292,4 @@ export type Invite = typeof invite.$inferSelect
 export type HouseholdMember = typeof householdMember.$inferSelect
 export type ShoppingEntry = typeof shoppingEntry.$inferSelect
 export type NewShoppingEntry = typeof shoppingEntry.$inferInsert
+export type RecipeImage = typeof recipeImage.$inferSelect

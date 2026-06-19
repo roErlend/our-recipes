@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Dialog,
   DialogTrigger,
@@ -7,10 +7,14 @@ import {
   Modal,
   ModalOverlay,
 } from 'react-aria-components'
-import { FileJson, GripVertical, Plus, X } from 'lucide-react'
+import { FileJson, GripVertical, ImagePlus, Plus, Upload, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
+import {
+  imageFileFromDataTransfer,
+  resizeImageToDataUrl,
+} from '@/lib/image'
 
 export interface RecipeFormIngredient {
   name: string
@@ -23,7 +27,10 @@ export interface RecipeFormValues {
   title: string
   description: string
   sourceUrl: string
+  /** External image URL (used when the recipe links to an image rather than an upload). */
   imageUrl: string
+  /** Pre-existing uploaded-image URL, for the preview on edit (null when none/creating). */
+  uploadedImageUrl: string | null
   instructions: string
   servings: string
   tags: string[]
@@ -35,6 +42,10 @@ export interface RecipeSubmitValues {
   description: string | null
   sourceUrl: string | null
   imageUrl: string | null
+  /** A freshly uploaded/pasted image as a data URL, or null/undefined to leave bytes untouched. */
+  imageUpload?: string | null
+  /** Drop any stored uploaded image (removed, or switched to a URL). */
+  clearUploadedImage?: boolean
   instructions: string | null
   servings: number | null
   tags: string[]
@@ -44,6 +55,19 @@ export interface RecipeSubmitValues {
     unit: string | null
     note: string | null
   }[]
+}
+
+/** How the recipe's image is currently set in the form. */
+type ImageState =
+  | { kind: 'none' }
+  | { kind: 'stored'; url: string } // an existing uploaded image (edit), unchanged
+  | { kind: 'url'; url: string } // an external image URL
+  | { kind: 'upload'; dataUrl: string } // a new uploaded/pasted image, not yet saved
+
+function initialImageState(v: RecipeFormValues): ImageState {
+  if (v.uploadedImageUrl) return { kind: 'stored', url: v.uploadedImageUrl }
+  if (v.imageUrl.trim()) return { kind: 'url', url: v.imageUrl }
+  return { kind: 'none' }
 }
 
 const emptyIngredient = (): RecipeFormIngredient => ({
@@ -58,19 +82,44 @@ export const emptyRecipeForm = (): RecipeFormValues => ({
   description: '',
   sourceUrl: '',
   imageUrl: '',
+  uploadedImageUrl: null,
   instructions: '',
   servings: '',
   tags: [],
   ingredients: [emptyIngredient()],
 })
 
-function toSubmit(values: RecipeFormValues): RecipeSubmitValues {
+function toSubmit(values: RecipeFormValues, img: ImageState): RecipeSubmitValues {
   const trimmed = (s: string) => (s.trim() === '' ? null : s.trim())
+
+  // Image: upload and external-URL are mutually exclusive. Switching to a URL or
+  // removing the image clears any stored upload; an upload replaces it.
+  let imageUrl: string | null = null
+  let imageUpload: string | null | undefined
+  let clearUploadedImage: boolean | undefined
+  switch (img.kind) {
+    case 'url':
+      imageUrl = trimmed(img.url)
+      clearUploadedImage = true
+      break
+    case 'upload':
+      imageUpload = img.dataUrl
+      break
+    case 'none':
+      clearUploadedImage = true
+      break
+    case 'stored':
+      // leave stored bytes as-is
+      break
+  }
+
   return {
     title: values.title.trim(),
     description: trimmed(values.description),
     sourceUrl: trimmed(values.sourceUrl),
-    imageUrl: trimmed(values.imageUrl),
+    imageUrl,
+    imageUpload,
+    clearUploadedImage,
     instructions: trimmed(values.instructions),
     servings: values.servings.trim() ? Number(values.servings) : null,
     tags: values.tags,
@@ -104,6 +153,9 @@ export function RecipeForm({
 }: RecipeFormProps) {
   const [values, setValues] = useState<RecipeFormValues>(
     initialValues ?? emptyRecipeForm(),
+  )
+  const [image, setImage] = useState<ImageState>(() =>
+    initialImageState(initialValues ?? emptyRecipeForm()),
   )
   const [tagDraft, setTagDraft] = useState('')
 
@@ -162,7 +214,7 @@ export function RecipeForm({
     <Form
       onSubmit={(e) => {
         e.preventDefault()
-        onSubmit(toSubmit(values))
+        onSubmit(toSubmit(values, image))
       }}
       className="flex flex-col gap-6"
     >
@@ -199,13 +251,10 @@ export function RecipeForm({
             placeholder="4"
           />
         </div>
-        <TextField
-          label="Bilde-URL"
-          type="url"
-          value={values.imageUrl}
-          onChange={(v) => set('imageUrl', v)}
-          placeholder="https://… (valgfritt)"
-        />
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-stone-700">Bilde</span>
+          <ImageField state={image} onChange={setImage} />
+        </div>
       </Section>
 
       <Section
@@ -355,6 +404,157 @@ export function RecipeForm({
         )}
       </div>
     </Form>
+  )
+}
+
+/* --------------------------- recipe image field -------------------------- */
+
+function ImageField({
+  state,
+  onChange,
+}: {
+  state: ImageState
+  onChange: (next: ImageState) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      setError(null)
+      if (!file.type.startsWith('image/')) {
+        setError('Filen må være et bilde.')
+        return
+      }
+      setBusy(true)
+      try {
+        const dataUrl = await resizeImageToDataUrl(file)
+        onChange({ kind: 'upload', dataUrl })
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Kunne ikke behandle bildet.')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [onChange],
+  )
+
+  // Paste an image from the clipboard anywhere while editing the recipe. Pastes
+  // without an image (e.g. text into a field) are left untouched.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const file = imageFileFromDataTransfer(e.clipboardData)
+      if (!file) return
+      e.preventDefault()
+      void handleFile(file)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [handleFile])
+
+  const preview =
+    state.kind === 'upload'
+      ? state.dataUrl
+      : state.kind === 'none'
+        ? null
+        : state.url
+
+  const openPicker = () => inputRef.current?.click()
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    const file = imageFileFromDataTransfer(e.dataTransfer)
+    if (file) void handleFile(file)
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {preview ? (
+        <div
+          onDrop={onDrop}
+          onDragOver={(e) => e.preventDefault()}
+          className="relative overflow-hidden rounded-lg border border-stone-200"
+        >
+          <img
+            src={preview}
+            alt="Forhåndsvisning"
+            className="max-h-56 w-full object-cover"
+          />
+          {state.kind === 'upload' && (
+            <span className="absolute top-2 left-2 rounded-full bg-brand-600/90 px-2 py-0.5 text-xs font-medium text-white">
+              Nytt bilde
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              onChange({ kind: 'none' })
+              setError(null)
+            }}
+            aria-label="Fjern bilde"
+            className="absolute top-2 right-2 rounded-full bg-stone-900/60 p-1.5 text-white transition-colors hover:bg-stone-900/80"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={openPicker}
+          onDrop={onDrop}
+          onDragOver={(e) => e.preventDefault()}
+          className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-stone-300 bg-stone-50/60 px-4 py-8 text-center text-sm text-stone-500 transition-colors hover:border-brand-400 hover:bg-brand-50/40"
+        >
+          <ImagePlus className="h-6 w-6 text-stone-400" />
+          <span>
+            {busy
+              ? 'Behandler bilde…'
+              : 'Last opp, dra og slipp, eller lim inn et bilde'}
+          </span>
+          <span className="text-xs text-stone-400">
+            JPG, PNG eller WebP – komprimeres automatisk
+          </span>
+        </button>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) void handleFile(file)
+          e.target.value = ''
+        }}
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onPress={openPicker}
+          isDisabled={busy}
+        >
+          <Upload className="h-4 w-4" />
+          {busy ? 'Behandler…' : 'Last opp bilde'}
+        </Button>
+        <span className="text-xs text-stone-400">eller</span>
+        <input
+          type="url"
+          value={state.kind === 'url' ? state.url : ''}
+          onChange={(e) => {
+            const url = e.target.value
+            onChange(url.trim() ? { kind: 'url', url } : { kind: 'none' })
+          }}
+          placeholder="lim inn en bilde-URL"
+          className="min-w-[12rem] flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+        />
+      </div>
+
+      {error && <p className="text-sm text-red-700">{error}</p>}
+    </div>
   )
 }
 

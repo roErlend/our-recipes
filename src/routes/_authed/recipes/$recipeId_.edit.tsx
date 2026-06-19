@@ -45,6 +45,7 @@ function EditRecipePage() {
     description: recipe.description ?? '',
     sourceUrl: recipe.sourceUrl ?? '',
     imageUrl: recipe.imageUrl ?? '',
+    uploadedImageUrl: recipe.uploadedImageUrl,
     instructions: recipe.instructions ?? '',
     servings: recipe.servings != null ? String(recipe.servings) : '',
     tags: recipe.tags,

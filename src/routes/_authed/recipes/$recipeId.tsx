@@ -210,9 +210,9 @@ function RecipeDetailPage() {
         )}
       </header>
 
-      {recipe.imageUrl && (
+      {(recipe.uploadedImageUrl ?? recipe.imageUrl) && (
         <img
-          src={recipe.imageUrl}
+          src={recipe.uploadedImageUrl ?? recipe.imageUrl!}
           alt={recipe.title}
           className="max-h-96 w-full rounded-2xl object-cover"
         />
