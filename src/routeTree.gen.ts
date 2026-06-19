@@ -14,6 +14,7 @@ import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedShoppingRouteImport } from './routes/_authed/shopping'
 import { Route as AuthedDelingRouteImport } from './routes/_authed/deling'
+import { Route as AuthedAdminRouteImport } from './routes/_authed/admin'
 import { Route as AuthedRecipesIndexRouteImport } from './routes/_authed/recipes/index'
 import { Route as ApiShapesShoppingRouteImport } from './routes/api/shapes/shopping'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -44,6 +45,11 @@ const AuthedShoppingRoute = AuthedShoppingRouteImport.update({
 const AuthedDelingRoute = AuthedDelingRouteImport.update({
   id: '/deling',
   path: '/deling',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedAdminRoute = AuthedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedRecipesIndexRoute = AuthedRecipesIndexRouteImport.update({
@@ -86,6 +92,7 @@ const AuthedRecipesRecipeIdEditRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/admin': typeof AuthedAdminRoute
   '/deling': typeof AuthedDelingRoute
   '/shopping': typeof AuthedShoppingRoute
   '/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
@@ -99,6 +106,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/admin': typeof AuthedAdminRoute
   '/deling': typeof AuthedDelingRoute
   '/shopping': typeof AuthedShoppingRoute
   '/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
@@ -114,6 +122,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
+  '/_authed/admin': typeof AuthedAdminRoute
   '/_authed/deling': typeof AuthedDelingRoute
   '/_authed/shopping': typeof AuthedShoppingRoute
   '/_authed/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
@@ -129,6 +138,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/admin'
     | '/deling'
     | '/shopping'
     | '/recipes/$recipeId'
@@ -142,6 +152,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/admin'
     | '/deling'
     | '/shopping'
     | '/recipes/$recipeId'
@@ -156,6 +167,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authed'
     | '/login'
+    | '/_authed/admin'
     | '/_authed/deling'
     | '/_authed/shopping'
     | '/_authed/recipes/$recipeId'
@@ -213,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedDelingRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/admin': {
+      id: '/_authed/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthedAdminRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/recipes/': {
       id: '/_authed/recipes/'
       path: '/recipes'
@@ -266,6 +285,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthedRouteChildren {
+  AuthedAdminRoute: typeof AuthedAdminRoute
   AuthedDelingRoute: typeof AuthedDelingRoute
   AuthedShoppingRoute: typeof AuthedShoppingRoute
   AuthedRecipesRecipeIdRoute: typeof AuthedRecipesRecipeIdRoute
@@ -275,6 +295,7 @@ interface AuthedRouteChildren {
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedAdminRoute: AuthedAdminRoute,
   AuthedDelingRoute: AuthedDelingRoute,
   AuthedShoppingRoute: AuthedShoppingRoute,
   AuthedRecipesRecipeIdRoute: AuthedRecipesRecipeIdRoute,

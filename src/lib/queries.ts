@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 
+import { adminListIngredients } from '@/server/admin'
 import { listIngredients } from '@/server/ingredients'
 import { getRecipe, listRecipes } from '@/server/recipes'
 import { getShoppingList } from '@/server/shopping'
@@ -50,4 +51,11 @@ export const pendingInvitesQueryOptions = () =>
   queryOptions({
     queryKey: ['pending-invites'] as const,
     queryFn: () => getPendingInvites(),
+  })
+
+/** Admin-only: the full ingredient catalog for cleanup/editing. */
+export const adminIngredientsQueryOptions = () =>
+  queryOptions({
+    queryKey: ['admin', 'ingredients'] as const,
+    queryFn: () => adminListIngredients(),
   })

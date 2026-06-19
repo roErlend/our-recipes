@@ -10,9 +10,17 @@ import {
   redirect,
   useRouter,
 } from '@tanstack/react-router'
-import { ChefHat, ListChecks, LogOut, UserPlus, UtensilsCrossed } from 'lucide-react'
+import {
+  ChefHat,
+  ListChecks,
+  LogOut,
+  Shield,
+  UserPlus,
+  UtensilsCrossed,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
+import { isAdminEmail } from '@/lib/admin'
 import { signOut } from '@/lib/auth-client'
 import {
   pendingInvitesQueryOptions,
@@ -53,6 +61,14 @@ function AuthedLayout() {
   const { user } = Route.useRouteContext()
   const router = useRouter()
 
+  const nav = isAdminEmail(user.email)
+    ? [
+        ...NAV,
+        { to: '/admin', label: 'Admin', icon: Shield, activeOptions: undefined } as const,
+      ]
+    : NAV
+  const mobileCols = nav.length === 4 ? 'grid-cols-4' : 'grid-cols-3'
+
   async function handleSignOut() {
     await signOut()
     await router.invalidate()
@@ -74,7 +90,7 @@ function AuthedLayout() {
           {/* Desktop nav. On mobile this collapses to the bottom tab bar below.
               preload="render" warms each section's code + data in the background. */}
           <nav className="ml-4 hidden items-center gap-1 sm:flex">
-            {NAV.map(({ to, label, icon: Icon, activeOptions }) => (
+            {nav.map(({ to, label, icon: Icon, activeOptions }) => (
               <Link
                 key={to}
                 to={to}
@@ -112,8 +128,10 @@ function AuthedLayout() {
       </main>
 
       {/* Mobile bottom tab bar — the primary navigation on phones. */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t border-stone-200 bg-stone-100/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
-        {NAV.map(({ to, label, icon: Icon, activeOptions }) => {
+      <nav
+        className={`fixed inset-x-0 bottom-0 z-20 grid ${mobileCols} border-t border-stone-200 bg-stone-100/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden`}
+      >
+        {nav.map(({ to, label, icon: Icon, activeOptions }) => {
           const tab =
             'flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium'
           return (
