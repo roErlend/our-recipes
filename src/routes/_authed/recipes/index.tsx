@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   useMutation,
   useQueryClient,
@@ -42,24 +42,22 @@ function RecipesPage() {
   const queryClient = useQueryClient()
   const { data: recipes } = useSuspenseQuery(recipesQueryOptions())
   const navigate = Route.useNavigate()
-  // The input is driven by local state so typing is always instant; binding it
-  // straight to the async URL state drops fast keystrokes. We mirror the term
-  // into the URL (?q=…), debounced + replace-history, so it survives back-nav
-  // from a recipe and is deep-linkable without spamming history. The URL `q` is
-  // only read to seed state on mount (incl. when this route remounts on
-  // back-navigation); local state is authoritative thereafter.
+  // The input is driven by local state so typing is always instant (binding it
+  // straight to the async URL state drops fast keystrokes). The URL `q` only
+  // seeds state on mount — including when this route remounts on back-navigation
+  // from a recipe — so the term is restored; local state is authoritative after.
   const { q: initialSearch = '' } = Route.useSearch()
   const [search, setSearch] = useState(initialSearch)
 
-  useEffect(() => {
-    const id = setTimeout(() => {
-      void navigate({
-        search: (prev) => ({ ...prev, q: search || undefined }),
-        replace: true,
-      })
-    }, 200)
-    return () => clearTimeout(id)
-  }, [search, navigate])
+  // Mirror the term into the URL as a direct consequence of editing (no effect).
+  // replace-history avoids an entry per keystroke; an empty term drops the param.
+  const onSearchChange = (value: string) => {
+    setSearch(value)
+    void navigate({
+      search: (prev) => ({ ...prev, q: value || undefined }),
+      replace: true,
+    })
+  }
 
   const recipesKey = recipesQueryOptions().queryKey
 
@@ -126,7 +124,7 @@ function RecipesPage() {
         <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-stone-400" />
         <input
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Søk på tittel, beskrivelse eller etikett…"
           className="w-full rounded-lg border border-stone-300 bg-white py-2 pr-3 pl-9 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
         />
