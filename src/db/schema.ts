@@ -10,6 +10,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
 
 /** Postgres `bytea` — raw binary, used for uploaded recipe images. */
@@ -291,6 +292,51 @@ export const recipeRating = pgTable(
   ],
 )
 
+/**
+ * A saved ingredient for the add-to-shopping-list autocomplete (distinct from
+ * {@link ingredient}, which holds a recipe's ingredient lines). Two kinds of
+ * rows coexist, told apart by {@link scopeId}:
+ *   - **stock** (`scope_id` NULL): curated ingredients that belong to no one,
+ *     seeded into the DB; visible to everyone.
+ *   - **household** (`scope_id` = household id): ingredients a member typed in
+ *     that the autocomplete didn't already know, visible only within that
+ *     household. A household row with the same name shadows a stock row.
+ *
+ * {@link category} groups the ingredient under a header on the shopping list
+ * (see `src/lib/categories.ts`). {@link nameKey} is the lower-cased name used for
+ * lookup/dedup. Partial unique indexes keep one row per name within each kind.
+ */
+export const ingredientCatalog = pgTable(
+  'ingredient_catalog',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    /** NULL = stock (belongs to no one); otherwise the household scope id. */
+    scopeId: text('scope_id'),
+    name: text('name').notNull(),
+    /** Normalized lower-case name, for lookup and dedup. */
+    nameKey: text('name_key').notNull(),
+    /** Grocery category for shopping-list grouping; see `src/lib/categories.ts`. */
+    category: text('category').notNull().default('Annet'),
+    createdAt: timestamp('created_at')
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (t) => [
+    index('ingredient_catalog_name_idx').on(t.nameKey),
+    // One stock row per name; one household row per (household, name). NULL
+    // scopes are excluded from the household index (and vice-versa) so the two
+    // kinds never collide.
+    uniqueIndex('ingredient_catalog_stock_uq')
+      .on(t.nameKey)
+      .where(sql`scope_id is null`),
+    uniqueIndex('ingredient_catalog_scope_uq')
+      .on(t.scopeId, t.nameKey)
+      .where(sql`scope_id is not null`),
+  ],
+)
+
 /* -------------------------------------------------------------------------- */
 /*  Relations                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -320,3 +366,5 @@ export type ShoppingEntry = typeof shoppingEntry.$inferSelect
 export type NewShoppingEntry = typeof shoppingEntry.$inferInsert
 export type RecipeImage = typeof recipeImage.$inferSelect
 export type RecipeRating = typeof recipeRating.$inferSelect
+export type IngredientCatalog = typeof ingredientCatalog.$inferSelect
+export type NewIngredientCatalog = typeof ingredientCatalog.$inferInsert

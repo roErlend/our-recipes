@@ -1,0 +1,40 @@
+/**
+ * Grocery categories for the saved-ingredient catalog and shopping-list
+ * grouping. Client-safe (no server imports) so both the catalog UI and the
+ * shopping list share one canonical, ordered list — the order here is the order
+ * sections appear on the shopping list (roughly a walk through the store).
+ */
+export const INGREDIENT_CATEGORIES = [
+  'Frukt og grønt',
+  'Kjøtt og fisk',
+  'Meieri og egg',
+  'Brød og bakeri',
+  'Tørrvarer og pasta',
+  'Hermetikk og konserves',
+  'Krydder og saus',
+  'Frysevarer',
+  'Drikke',
+  'Snacks og godteri',
+  'Husholdning',
+  'Annet',
+] as const
+
+export type IngredientCategory = (typeof INGREDIENT_CATEGORIES)[number]
+
+/** Fallback category for ingredients with no catalog entry / no category. */
+export const DEFAULT_CATEGORY: IngredientCategory = 'Annet'
+
+const ORDER = new Map(INGREDIENT_CATEGORIES.map((c, i) => [c, i]))
+
+/** Sort key for a category — unknown values sort just before "Annet". */
+export function categoryRank(category: string): number {
+  return ORDER.get(category as IngredientCategory) ?? ORDER.size - 1.5
+}
+
+/** Coerce an arbitrary string to a known category, falling back to the default. */
+export function normalizeCategory(value: string | null | undefined): IngredientCategory {
+  if (value && ORDER.has(value as IngredientCategory)) {
+    return value as IngredientCategory
+  }
+  return DEFAULT_CATEGORY
+}

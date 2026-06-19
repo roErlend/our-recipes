@@ -5,7 +5,13 @@ import { z } from 'zod'
 import { db } from '@/db'
 import { recipe, shoppingCheck, shoppingEntry } from '@/db/schema'
 import type { NewShoppingEntry } from '@/db/schema'
+import { DEFAULT_CATEGORY } from '@/lib/categories'
 import { requireUser } from '@/server/auth'
+import {
+  catalogForScope,
+  nameKey,
+  saveHouseholdIngredient,
+} from '@/server/ingredients'
 import { accessibleScope } from '@/server/sharing'
 
 export interface ShoppingItem {
@@ -18,6 +24,8 @@ export interface ShoppingItem {
   hasUnquantified: boolean
   /** Titles of the recipes that contributed this item (empty for ad-hoc items). */
   sources: string[]
+  /** Grocery category for grouping, resolved from the ingredient catalog by name. */
+  category: string
   checked: boolean
 }
 
@@ -83,6 +91,10 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
       .where(eq(shoppingCheck.scopeId, householdId))
     const checkedByKey = new Map(checks.map((c) => [c.itemKey, c.checked]))
 
+    // Categories are resolved by ingredient name (read-time), so recipe-derived
+    // items get categorized too as soon as the name is in the catalog.
+    const catalog = await catalogForScope(householdId)
+
     const map = new Map<string, ShoppingItem>()
     const recipes = new Map<string, string>() // id -> title
 
@@ -106,6 +118,7 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
           quantity: e.quantity ?? null,
           hasUnquantified: e.quantity == null,
           sources: e.sourceTitle ? [e.sourceTitle] : [],
+          category: catalog.get(nameKey(e.name))?.category ?? DEFAULT_CATEGORY,
           checked: checkedByKey.get(e.itemKey) ?? false,
         })
       }
@@ -207,16 +220,25 @@ export const removeRecipeFromShopping = createServerFn({ method: 'POST' })
     return { recipeId: data.recipeId }
   })
 
-/** Add a one-off item typed by the user (not tied to any recipe). */
+/** Add a one-off item typed by the user (not tied to any recipe). When
+ *  `category` is given the item is also saved to the household ingredient
+ *  catalog so the autocomplete remembers it (the "save a new ingredient" path). */
 export const addManualItem = createServerFn({ method: 'POST' })
-  .validator((input: { name: string; quantity?: number | null; unit?: string | null }) =>
-    z
-      .object({
-        name: z.string().trim().min(1, 'Skriv inn en vare').max(200),
-        quantity: z.number().positive().nullable().optional(),
-        unit: z.string().trim().max(40).nullable().optional(),
-      })
-      .parse(input),
+  .validator(
+    (input: {
+      name: string
+      quantity?: number | null
+      unit?: string | null
+      category?: string | null
+    }) =>
+      z
+        .object({
+          name: z.string().trim().min(1, 'Skriv inn en vare').max(200),
+          quantity: z.number().positive().nullable().optional(),
+          unit: z.string().trim().max(40).nullable().optional(),
+          category: z.string().trim().max(60).nullable().optional(),
+        })
+        .parse(input),
   )
   .handler(async ({ data }) => {
     const user = await requireUser()
@@ -226,6 +248,10 @@ export const addManualItem = createServerFn({ method: 'POST' })
     const key = itemKey(name, unit)
 
     await db.transaction(async (tx) => {
+      if (data.category) {
+        await saveHouseholdIngredient(tx, householdId, name, data.category)
+      }
+
       // Fold repeated manual adds of the same item into the existing ad-hoc row.
       const [existing] = await tx
         .select()

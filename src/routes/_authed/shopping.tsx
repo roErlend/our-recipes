@@ -6,10 +6,12 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ListChecks, Plus, ShoppingCart, Trash2, X } from 'lucide-react'
+import { ListChecks, ShoppingCart, Trash2, X } from 'lucide-react'
 
+import { AddShoppingItem } from '@/components/AddShoppingItem'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
+import { categoryRank } from '@/lib/categories'
 import { shoppingQueryOptions } from '@/lib/queries'
 import { shoppingChecksCollection } from '@/lib/shopping-collection'
 import {
@@ -26,14 +28,32 @@ export const Route = createFileRoute('/_authed/shopping')({
   component: ShoppingPage,
 })
 
-/** Unchecked first, then alphabetical — matches the server's initial ordering. */
-function sortItems(items: ShoppingItem[], isChecked: (item: ShoppingItem) => boolean) {
-  return [...items].sort((a, b) => {
-    const ca = isChecked(a)
-    const cb = isChecked(b)
-    if (ca !== cb) return ca ? 1 : -1
-    return a.name.localeCompare(b.name)
-  })
+/**
+ * Group items under category headers in the canonical category order. Within a
+ * group, unchecked items come first, then alphabetical. Empty groups are omitted.
+ */
+function groupItems(
+  items: ShoppingItem[],
+  isChecked: (item: ShoppingItem) => boolean,
+) {
+  const byCategory = new Map<string, ShoppingItem[]>()
+  for (const item of items) {
+    const list = byCategory.get(item.category)
+    if (list) list.push(item)
+    else byCategory.set(item.category, [item])
+  }
+
+  return [...byCategory.entries()]
+    .sort((a, b) => categoryRank(a[0]) - categoryRank(b[0]))
+    .map(([category, groupItemsList]) => ({
+      category,
+      items: [...groupItemsList].sort((a, b) => {
+        const ca = isChecked(a)
+        const cb = isChecked(b)
+        if (ca !== cb) return ca ? 1 : -1
+        return a.name.localeCompare(b.name, 'nb')
+      }),
+    }))
 }
 
 function formatAmount(item: ShoppingItem) {
@@ -62,7 +82,8 @@ function useShoppingMutations() {
     queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
 
   const add = useMutation({
-    mutationFn: (name: string) => addManualItem({ data: { name } }),
+    mutationFn: (input: { name: string; category?: string }) =>
+      addManualItem({ data: input }),
     onSuccess: invalidate,
   })
   const remove = useMutation({
@@ -114,34 +135,6 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
   return <ShoppingView list={list} isChecked={isChecked} onToggle={toggle} />
 }
 
-function AddItemForm({ onAdd }: { onAdd: (name: string) => void }) {
-  const [value, setValue] = useState('')
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const name = value.trim()
-    if (!name) return
-    onAdd(name)
-    setValue('')
-  }
-
-  return (
-    <form onSubmit={submit} className="flex items-center gap-2">
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Legg til en vare…"
-        aria-label="Legg til en vare på handlelisten"
-        className="flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
-      />
-      <Button type="submit" isDisabled={!value.trim()}>
-        <Plus className="h-4 w-4" />
-        <span className="hidden sm:inline">Legg til</span>
-      </Button>
-    </form>
-  )
-}
-
 function ShoppingView({
   list,
   isChecked,
@@ -153,9 +146,11 @@ function ShoppingView({
 }) {
   const { recipes, items } = list
   const { add, remove, removeChecked } = useShoppingMutations()
-  const sorted = sortItems(items, isChecked)
+  const groups = groupItems(items, isChecked)
   const remaining = items.filter((i) => !isChecked(i)).length
   const checkedCount = items.length - remaining
+  // Only label sections when there's more than one to label.
+  const showHeaders = groups.length > 1
 
   return (
     <div className="flex flex-col gap-6">
@@ -184,7 +179,7 @@ function ShoppingView({
         </Button>
       </div>
 
-      <AddItemForm onAdd={(name) => add.mutate(name)} />
+      <AddShoppingItem onAdd={(input) => add.mutate(input)} />
 
       {recipes.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -213,60 +208,71 @@ function ShoppingView({
           </Link>
         </div>
       ) : (
-        <ul className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-          {sorted.map((item) => {
-            const amount = formatAmount(item)
-            const checked = isChecked(item)
-            return (
-              <li
-                key={item.key}
-                className="flex items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-0"
-              >
-                <Checkbox
-                  isSelected={checked}
-                  onChange={(value) => onToggle(item, value)}
-                  aria-label={`Merk ${item.name} som kjøpt`}
-                  className="-m-2 p-2"
-                />
-                <div className="min-w-0 flex-1">
-                  <span
-                    className={
-                      checked
-                        ? 'text-stone-400 line-through'
-                        : 'font-medium text-stone-900'
-                    }
-                  >
-                    {item.name}
-                  </span>
-                  {item.sources.length > 0 && (
-                    <span className="ml-2 text-sm text-stone-400">
-                      {item.sources.join(', ')}
-                    </span>
-                  )}
-                </div>
-                {amount && (
-                  <span
-                    className={
-                      checked
-                        ? 'text-sm text-stone-300 line-through'
-                        : 'text-sm font-medium text-stone-600'
-                    }
-                  >
-                    {amount}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => remove.mutate(item.key)}
-                  aria-label={`Fjern ${item.name} fra listen`}
-                  className="-m-2 shrink-0 rounded-full p-2 text-stone-300 transition-colors hover:bg-stone-100 hover:text-stone-600"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+        <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+          {groups.map((group) => (
+            <section key={group.category}>
+              {showHeaders && (
+                <h2 className="border-b border-stone-100 bg-stone-50 px-4 py-1.5 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                  {group.category}
+                </h2>
+              )}
+              <ul>
+                {group.items.map((item) => {
+                  const amount = formatAmount(item)
+                  const checked = isChecked(item)
+                  return (
+                    <li
+                      key={item.key}
+                      className="flex items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-0"
+                    >
+                      <Checkbox
+                        isSelected={checked}
+                        onChange={(value) => onToggle(item, value)}
+                        aria-label={`Merk ${item.name} som kjøpt`}
+                        className="-m-2 p-2"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <span
+                          className={
+                            checked
+                              ? 'text-stone-400 line-through'
+                              : 'font-medium text-stone-900'
+                          }
+                        >
+                          {item.name}
+                        </span>
+                        {item.sources.length > 0 && (
+                          <span className="ml-2 text-sm text-stone-400">
+                            {item.sources.join(', ')}
+                          </span>
+                        )}
+                      </div>
+                      {amount && (
+                        <span
+                          className={
+                            checked
+                              ? 'text-sm text-stone-300 line-through'
+                              : 'text-sm font-medium text-stone-600'
+                          }
+                        >
+                          {amount}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => remove.mutate(item.key)}
+                        aria-label={`Fjern ${item.name} fra listen`}
+                        className="-m-2 shrink-0 rounded-full p-2 text-stone-300 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
       )}
     </div>
   )
