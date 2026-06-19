@@ -100,6 +100,7 @@ function RecipeDetailPage() {
   const toggleShopping = () => shoppingMutation.mutate(!recipe.inShoppingList)
   const handleDelete = () => deleteMutation.mutate()
   const deleting = deleteMutation.isPending
+  const imageSrc = recipe.uploadedImageUrl ?? recipe.imageUrl
 
   return (
     <article className="flex flex-col gap-6">
@@ -210,15 +211,24 @@ function RecipeDetailPage() {
         )}
       </header>
 
-      {(recipe.uploadedImageUrl ?? recipe.imageUrl) && (
-        <img
-          src={recipe.uploadedImageUrl ?? recipe.imageUrl!}
-          alt={recipe.title}
-          // Show the whole image at its natural aspect ratio — bounded by the
-          // column width and a max height, centered — rather than cropping/
-          // zooming it to fill a fixed band.
-          className="mx-auto max-h-96 max-w-full rounded-2xl"
-        />
+      {imageSrc && (
+        // Full-width banner at a fixed aspect ratio. The image itself is shown
+        // whole (object-contain, never cropped/zoomed); a blurred, scaled copy
+        // of the same image fills the letterbox area behind it so the frame
+        // always looks intentional regardless of the image's shape.
+        <div className="relative aspect-[16/9] max-h-96 w-full overflow-hidden rounded-2xl bg-stone-100">
+          <img
+            src={imageSrc}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
+          />
+          <img
+            src={imageSrc}
+            alt={recipe.title}
+            className="relative h-full w-full object-contain"
+          />
+        </div>
       )}
 
       <div
