@@ -5,6 +5,7 @@ import {
   Scripts,
   createRootRouteWithContext,
 } from '@tanstack/react-router'
+import { NuqsAdapter } from 'nuqs/adapters/tanstack-router'
 
 import appCss from '../styles.css?url'
 
@@ -75,7 +76,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children}
+        <NuqsAdapter>{children}</NuqsAdapter>
         <Scripts />
       </body>
     </html>

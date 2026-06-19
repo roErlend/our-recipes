@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import {
   useMutation,
   useQueryClient,
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
+import { useQueryState } from 'nuqs'
 import {
   Check,
   ExternalLink,
@@ -33,7 +34,10 @@ export const Route = createFileRoute('/_authed/recipes/')({
 function RecipesPage() {
   const queryClient = useQueryClient()
   const { data: recipes } = useSuspenseQuery(recipesQueryOptions())
-  const [search, setSearch] = useState('')
+  // Keep the search term in the URL (?q=…) so it survives back-navigation from a
+  // recipe. Default '' drops the param entirely; replace-history avoids a new
+  // entry per keystroke; shallow keeps it client-side (no loader re-run).
+  const [search, setSearch] = useQueryState('q', { defaultValue: '' })
 
   const recipesKey = recipesQueryOptions().queryKey
 
