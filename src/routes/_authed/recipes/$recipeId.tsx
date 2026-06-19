@@ -214,7 +214,10 @@ function RecipeDetailPage() {
         <img
           src={recipe.uploadedImageUrl ?? recipe.imageUrl!}
           alt={recipe.title}
-          className="max-h-96 w-full rounded-2xl object-cover"
+          // Show the whole image at its natural aspect ratio — bounded by the
+          // column width and a max height, centered — rather than cropping/
+          // zooming it to fill a fixed band.
+          className="mx-auto max-h-96 max-w-full rounded-2xl"
         />
       )}
 
