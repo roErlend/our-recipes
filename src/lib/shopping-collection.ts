@@ -29,10 +29,12 @@ export type ShoppingCheckRow = z.infer<typeof shoppingCheckRow>
  * behind a mount check), so the SSR placeholder is never actually fetched — it
  * just has to parse.
  */
-const SHAPE_URL =
+const shapeUrl = (path: string) =>
   typeof window === 'undefined'
-    ? 'http://localhost/api/shapes/shopping'
-    : `${window.location.origin}/api/shapes/shopping`
+    ? `http://localhost${path}`
+    : `${window.location.origin}${path}`
+
+const SHAPE_URL = shapeUrl('/api/shapes/shopping')
 
 export const shoppingChecksCollection = createCollection(
   electricCollectionOptions({
@@ -66,5 +68,42 @@ export const shoppingChecksCollection = createCollection(
       const { txid } = await clearShoppingChecks()
       return { txid }
     },
+  }),
+)
+
+/**
+ * Realtime contents of the shared shopping list, synced from the
+ * `shopping_entry` table via Electric. One row per ingredient *contribution*
+ * (recipe-derived or ad-hoc); the view folds them into lines by item key. When
+ * either member adds or removes a recipe (or an ad-hoc item), the write goes to
+ * Postgres through our server functions and Electric streams the row changes
+ * here, so both members' lists stay in sync without a refresh.
+ *
+ * Read-only: every write goes through the existing server functions (recipe
+ * expansion, merge-by-key and check-clearing all happen server-side), so this
+ * collection defines no write handlers — it only mirrors the synced rows. The
+ * `/api/shapes/shopping-entries` proxy pins the household `where`; the columns
+ * mirror its `columns=…` selection.
+ */
+const shoppingEntryRow = z.object({
+  id: z.string(),
+  item_key: z.string(),
+  name: z.string(),
+  quantity: z.number().nullable(),
+  unit: z.string().nullable(),
+  source_recipe_id: z.string().nullable(),
+  source_title: z.string().nullable(),
+})
+
+export type ShoppingEntryRow = z.infer<typeof shoppingEntryRow>
+
+export const shoppingEntriesCollection = createCollection(
+  electricCollectionOptions({
+    id: 'shopping-entries',
+    shapeOptions: {
+      url: shapeUrl('/api/shapes/shopping-entries'),
+    },
+    schema: shoppingEntryRow,
+    getKey: (row) => row.id,
   }),
 )

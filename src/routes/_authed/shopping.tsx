@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from '@tanstack/react-db'
 import {
   useMutation,
@@ -17,7 +17,10 @@ import {
   ingredientsQueryOptions,
   shoppingQueryOptions,
 } from '@/lib/queries'
-import { shoppingChecksCollection } from '@/lib/shopping-collection'
+import {
+  shoppingChecksCollection,
+  shoppingEntriesCollection,
+} from '@/lib/shopping-collection'
 import { type CatalogIngredient } from '@/server/ingredients'
 import {
   addManualItem,
@@ -171,7 +174,8 @@ function ShoppingPage() {
   const mounted = useMounted()
 
   // Before mount we render from the server's snapshot (no live query); once
-  // mounted the realtime collection takes over and syncs checks across devices.
+  // mounted the realtime collections take over and sync checks + list contents
+  // across devices.
   return mounted ? (
     <RealtimeShoppingList list={data} />
   ) : (
@@ -184,6 +188,29 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
   const { data: checkRows } = useLiveQuery((q) =>
     q.from({ c: shoppingChecksCollection }),
   )
+  // Keep the list *contents* in sync across devices. The shopping_entry rows
+  // stream in via Electric; whenever they change — a recipe or item added or
+  // removed on either device — we refetch the server-aggregated list. The
+  // server stays the single source of truth for merging/categorizing (and for
+  // each recipe's "on the list" flag); Electric just tells us when to re-pull.
+  // (Checks below sync directly: they're a simple per-row overlay, so reading
+  // them straight from the collection keeps toggling instant/optimistic.)
+  const { data: entryRows } = useLiveQuery((q) =>
+    q.from({ e: shoppingEntriesCollection }),
+  )
+  const entriesSig = (entryRows ?? [])
+    .map((r) => `${r.id}:${r.item_key}:${r.quantity}:${r.source_title}`)
+    .sort()
+    .join('|')
+  // Skip the first sync (the snapshot already reflects it); refetch on changes.
+  const lastSig = useRef<string | null>(null)
+  useEffect(() => {
+    if (lastSig.current !== null && lastSig.current !== entriesSig) {
+      queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
+    }
+    lastSig.current = entriesSig
+  }, [entriesSig, queryClient])
+
   const checkedByKey = new Map((checkRows ?? []).map((r) => [r.item_key, r.checked]))
 
   const isChecked = (item: ShoppingItem) => checkedByKey.get(item.key) ?? false

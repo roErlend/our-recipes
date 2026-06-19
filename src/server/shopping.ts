@@ -6,6 +6,8 @@ import { db } from '@/db'
 import { recipe, shoppingCheck, shoppingEntry } from '@/db/schema'
 import type { NewShoppingEntry } from '@/db/schema'
 import { DEFAULT_CATEGORY } from '@/lib/categories'
+import { aggregateShoppingEntries } from '@/lib/shopping-aggregate'
+import type { ShoppingList } from '@/lib/shopping-aggregate'
 import { requireUser } from '@/server/auth'
 import {
   catalogForScope,
@@ -14,31 +16,9 @@ import {
 } from '@/server/ingredients'
 import { accessibleScope } from '@/server/sharing'
 
-export interface ShoppingItem {
-  key: string
-  name: string
-  unit: string | null
-  /** Summed quantity across contributions, or null if none of them were quantified. */
-  quantity: number | null
-  /** True when at least one contributing entry had no numeric quantity (e.g. "to taste"). */
-  hasUnquantified: boolean
-  /** Titles of the recipes that contributed this item (empty for ad-hoc items). */
-  sources: string[]
-  /** Grocery category for grouping, resolved from the ingredient catalog by name. */
-  category: string
-  checked: boolean
-}
-
-export interface ShoppingList {
-  /** Recipes currently contributing items to the list. */
-  recipes: { id: string; title: string }[]
-  items: ShoppingItem[]
-  /**
-   * The household scope id these checks belong to. The client needs it to build
-   * optimistic rows for the realtime `shopping_check` collection (Electric).
-   */
-  scopeId: string
-}
+// The list shape and aggregation live in a client-safe lib so the realtime view
+// can fold the Electric-synced entries exactly the way the server does.
+export type { ShoppingItem, ShoppingList } from '@/lib/shopping-aggregate'
 
 /** Normalized grouping key for a shopping line. Mirrored by `shopping_entry.item_key`. */
 function itemKey(name: string, unit: string | null) {
@@ -95,45 +75,13 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
     // items get categorized too as soon as the name is in the catalog.
     const catalog = await catalogForScope(householdId)
 
-    const map = new Map<string, ShoppingItem>()
-    const recipes = new Map<string, string>() // id -> title
-
-    for (const e of entries) {
-      if (e.sourceRecipeId && e.sourceTitle) recipes.set(e.sourceRecipeId, e.sourceTitle)
-      const existing = map.get(e.itemKey)
-      if (existing) {
-        if (e.quantity != null) {
-          existing.quantity = (existing.quantity ?? 0) + e.quantity
-        } else {
-          existing.hasUnquantified = true
-        }
-        if (e.sourceTitle && !existing.sources.includes(e.sourceTitle)) {
-          existing.sources.push(e.sourceTitle)
-        }
-      } else {
-        map.set(e.itemKey, {
-          key: e.itemKey,
-          name: e.name.trim(),
-          unit: e.unit,
-          quantity: e.quantity ?? null,
-          hasUnquantified: e.quantity == null,
-          sources: e.sourceTitle ? [e.sourceTitle] : [],
-          category: catalog.get(nameKey(e.name))?.category ?? DEFAULT_CATEGORY,
-          checked: checkedByKey.get(e.itemKey) ?? false,
-        })
-      }
-    }
-
-    const items = [...map.values()].sort((a, b) => {
-      if (a.checked !== b.checked) return a.checked ? 1 : -1
-      return a.name.localeCompare(b.name)
+    const { recipes, items } = aggregateShoppingEntries(entries, {
+      resolveCategory: (name) =>
+        catalog.get(nameKey(name))?.category ?? DEFAULT_CATEGORY,
+      isChecked: (key) => checkedByKey.get(key) ?? false,
     })
 
-    return {
-      recipes: [...recipes].map(([id, title]) => ({ id, title })),
-      items,
-      scopeId: householdId,
-    }
+    return { recipes, items, scopeId: householdId }
   },
 )
 
