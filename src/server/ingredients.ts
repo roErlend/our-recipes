@@ -7,6 +7,7 @@ import {
   categoryRank,
   DEFAULT_CATEGORY,
   INGREDIENT_CATEGORIES,
+  isCanonicalCategory,
   normalizeCategory,
 } from '@/lib/categories'
 import { requireUser } from '@/server/auth'
@@ -90,19 +91,40 @@ export const catalogForScope = createServerOnlyFn(async (householdId: string) =>
 })
 
 /**
- * All category names available app-wide: the canonical list ∪ admin-created
- * categories ({@link ingredientCategory}), ordered the way the shopping list
- * groups them. Used to populate category pickers; callers may additionally fold
- * in categories found on their own ingredient rows.
+ * Persist a category as a first-class row so it survives independently of any
+ * ingredient using it. No-op for canonical categories (they always exist).
+ * Server-only; called whenever any ingredient is filed under a category.
+ */
+export const ensureCategoryRow = createServerOnlyFn(
+  async (
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    name: string,
+  ) => {
+    const trimmed = name.trim()
+    if (!trimmed || isCanonicalCategory(trimmed)) return
+    await tx
+      .insert(ingredientCategory)
+      .values({ name: trimmed })
+      .onConflictDoNothing()
+  },
+)
+
+/**
+ * All category names available app-wide: the canonical list ∪ first-class
+ * categories ({@link ingredientCategory}) ∪ any category currently used by an
+ * ingredient — so every category is first-class regardless of who created it.
+ * Ordered the way the shopping list groups them.
  */
 export const listCategories = createServerFn({ method: 'GET' }).handler(
   async (): Promise<string[]> => {
     await requireUser()
-    const rows = await db
-      .select({ name: ingredientCategory.name })
-      .from(ingredientCategory)
+    const [named, used] = await Promise.all([
+      db.select({ name: ingredientCategory.name }).from(ingredientCategory),
+      db.selectDistinct({ category: ingredientCatalog.category }).from(ingredientCatalog),
+    ])
     const set = new Set<string>(INGREDIENT_CATEGORIES)
-    for (const r of rows) set.add(r.name)
+    for (const r of named) set.add(r.name)
+    for (const r of used) if (r.category) set.add(r.category)
     return [...set].sort(
       (a, b) => categoryRank(a) - categoryRank(b) || a.localeCompare(b, 'nb'),
     )
@@ -168,6 +190,9 @@ export const saveHouseholdIngredient = createServerOnlyFn(
       category: cat,
     })
   }
+
+  // Make the chosen category first-class, just like an admin-created one.
+  await ensureCategoryRow(tx, cat)
 })
 
 export { DEFAULT_CATEGORY }

@@ -26,6 +26,11 @@ export const DEFAULT_CATEGORY: IngredientCategory = 'Annet'
 
 const ORDER = new Map(INGREDIENT_CATEGORIES.map((c, i) => [c, i]))
 
+/** True if `name` is one of the built-in categories (which always exist). */
+export function isCanonicalCategory(name: string): boolean {
+  return ORDER.has(name as IngredientCategory)
+}
+
 /** Sort key for a category — unknown values sort just before "Annet". */
 export function categoryRank(category: string): number {
   return ORDER.get(category as IngredientCategory) ?? ORDER.size - 1.5

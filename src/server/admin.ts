@@ -6,11 +6,11 @@ import { db } from '@/db'
 import { ingredientCatalog, ingredientCategory } from '@/db/schema'
 import {
   DEFAULT_CATEGORY,
-  INGREDIENT_CATEGORIES,
+  isCanonicalCategory,
   normalizeCategory,
 } from '@/lib/categories'
 import { requireAdmin } from '@/server/auth'
-import { nameKey } from '@/server/ingredients'
+import { ensureCategoryRow, nameKey } from '@/server/ingredients'
 
 export interface AdminIngredient {
   id: string
@@ -18,18 +18,6 @@ export interface AdminIngredient {
   category: string
   /** True for shared stock (scope_id NULL); false for a household-owned row. */
   isStock: boolean
-}
-
-const isCanonical = (name: string) =>
-  (INGREDIENT_CATEGORIES as readonly string[]).includes(name)
-
-/** Persist a non-canonical category so it survives even with no ingredients. */
-async function ensureCategoryRow(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  name: string,
-) {
-  if (!name || isCanonical(name)) return
-  await tx.insert(ingredientCategory).values({ name }).onConflictDoNothing()
 }
 
 /** Every ingredient in the catalog (stock + all households), for cleanup. */
@@ -131,7 +119,7 @@ export const adminCreateCategory = createServerFn({ method: 'POST' })
     await requireAdmin()
     const name = data.name.trim()
     // Canonical categories already exist implicitly; nothing to persist.
-    if (!isCanonical(name)) {
+    if (!isCanonicalCategory(name)) {
       await db.insert(ingredientCategory).values({ name }).onConflictDoNothing()
     }
     return { name }
