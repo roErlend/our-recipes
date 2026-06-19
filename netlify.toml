@@ -1,0 +1,8 @@
+[build]
+  command = "vite build"
+  publish = "dist/client"
+
+[build.environment]
+  # Pin Node to a current LTS so prod matches local. Netlify auto-detects pnpm
+  # from pnpm-lock.yaml.
+  NODE_VERSION = "22"
