@@ -215,11 +215,23 @@ function ShoppingView({
 }) {
   const { recipes, items } = list
   const { add, remove, removeChecked } = useShoppingMutations()
-  const groups = groupItems(items, isChecked)
-  const remaining = items.filter((i) => !isChecked(i)).length
-  const checkedCount = items.length - remaining
-  // Only label sections when there's more than one to label.
-  const showHeaders = groups.length > 1
+  // Unchecked items are grouped under category headers; checked items all drop
+  // to a single section at the very bottom (ordered by category, then name).
+  const uncheckedGroups = groupItems(
+    items.filter((i) => !isChecked(i)),
+    isChecked,
+  )
+  const checkedItems = items
+    .filter((i) => isChecked(i))
+    .sort(
+      (a, b) =>
+        categoryRank(a.category) - categoryRank(b.category) ||
+        a.name.localeCompare(b.name, 'nb'),
+    )
+  const checkedCount = checkedItems.length
+  const remaining = items.length - checkedCount
+  // Only label category sections when there's more than one.
+  const showHeaders = uncheckedGroups.length > 1
 
   return (
     <div className="flex flex-col gap-6">
@@ -278,71 +290,106 @@ function ShoppingView({
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-          {groups.map((group) => (
+          {uncheckedGroups.map((group) => (
             <section key={group.category}>
-              {showHeaders && (
-                <h2 className="border-b border-stone-100 bg-stone-50 px-4 py-1.5 text-xs font-semibold tracking-wide text-stone-500 uppercase">
-                  {group.category}
-                </h2>
-              )}
+              {showHeaders && <SectionHeader>{group.category}</SectionHeader>}
               <ul>
-                {group.items.map((item) => {
-                  const amount = formatAmount(item)
-                  const checked = isChecked(item)
-                  return (
-                    <li
-                      key={item.key}
-                      className="flex items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-0"
-                    >
-                      <Checkbox
-                        isSelected={checked}
-                        onChange={(value) => onToggle(item, value)}
-                        aria-label={`Merk ${item.name} som kjøpt`}
-                        className="-m-2 p-2"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <span
-                          className={
-                            checked
-                              ? 'text-stone-400 line-through'
-                              : 'font-medium text-stone-900'
-                          }
-                        >
-                          {item.name}
-                        </span>
-                        {item.sources.length > 0 && (
-                          <span className="ml-2 text-sm text-stone-400">
-                            {item.sources.join(', ')}
-                          </span>
-                        )}
-                      </div>
-                      {amount && (
-                        <span
-                          className={
-                            checked
-                              ? 'text-sm text-stone-300 line-through'
-                              : 'text-sm font-medium text-stone-600'
-                          }
-                        >
-                          {amount}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => remove.mutate(item.key)}
-                        aria-label={`Fjern ${item.name} fra listen`}
-                        className="-m-2 shrink-0 rounded-full p-2 text-stone-300 transition-colors hover:bg-stone-100 hover:text-stone-600"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </li>
-                  )
-                })}
+                {group.items.map((item) => (
+                  <ShoppingRow
+                    key={item.key}
+                    item={item}
+                    checked={false}
+                    onToggle={onToggle}
+                    onRemove={() => remove.mutate(item.key)}
+                  />
+                ))}
               </ul>
             </section>
           ))}
+
+          {checkedItems.length > 0 && (
+            <section>
+              <SectionHeader>Avhuket ({checkedCount})</SectionHeader>
+              <ul>
+                {checkedItems.map((item) => (
+                  <ShoppingRow
+                    key={item.key}
+                    item={item}
+                    checked
+                    onToggle={onToggle}
+                    onRemove={() => remove.mutate(item.key)}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       )}
     </div>
+  )
+}
+
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="border-b border-stone-100 bg-stone-50 px-4 py-1.5 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+      {children}
+    </h2>
+  )
+}
+
+function ShoppingRow({
+  item,
+  checked,
+  onToggle,
+  onRemove,
+}: {
+  item: ShoppingItem
+  checked: boolean
+  onToggle: (item: ShoppingItem, checked: boolean) => void
+  onRemove: () => void
+}) {
+  const amount = formatAmount(item)
+  return (
+    <li className="flex items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-0">
+      <Checkbox
+        isSelected={checked}
+        onChange={(value) => onToggle(item, value)}
+        aria-label={`Merk ${item.name} som kjøpt`}
+        className="-m-2 p-2"
+      />
+      <div className="min-w-0 flex-1">
+        <span
+          className={
+            checked ? 'text-stone-400 line-through' : 'font-medium text-stone-900'
+          }
+        >
+          {item.name}
+        </span>
+        {item.sources.length > 0 && (
+          <span className="ml-2 text-sm text-stone-400">
+            {item.sources.join(', ')}
+          </span>
+        )}
+      </div>
+      {amount && (
+        <span
+          className={
+            checked
+              ? 'text-sm text-stone-300 line-through'
+              : 'text-sm font-medium text-stone-600'
+          }
+        >
+          {amount}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Fjern ${item.name} fra listen`}
+        className="-m-2 shrink-0 rounded-full p-2 text-stone-300 transition-colors hover:bg-stone-100 hover:text-stone-600"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </li>
   )
 }
