@@ -31,10 +31,12 @@ export function categoryRank(category: string): number {
   return ORDER.get(category as IngredientCategory) ?? ORDER.size - 1.5
 }
 
-/** Coerce an arbitrary string to a known category, falling back to the default. */
-export function normalizeCategory(value: string | null | undefined): IngredientCategory {
-  if (value && ORDER.has(value as IngredientCategory)) {
-    return value as IngredientCategory
-  }
-  return DEFAULT_CATEGORY
+/**
+ * Clean a stored category: keep any non-empty value (custom categories are
+ * allowed — they sort just before "Annet" via {@link categoryRank}), falling
+ * back to the default only for null/blank.
+ */
+export function normalizeCategory(value: string | null | undefined): string {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : DEFAULT_CATEGORY
 }

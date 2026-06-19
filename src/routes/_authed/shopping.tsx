@@ -49,7 +49,10 @@ function groupItems(
   }
 
   return [...byCategory.entries()]
-    .sort((a, b) => categoryRank(a[0]) - categoryRank(b[0]))
+    .sort(
+      (a, b) =>
+        categoryRank(a[0]) - categoryRank(b[0]) || a[0].localeCompare(b[0], 'nb'),
+    )
     .map(([category, groupItemsList]) => ({
       category,
       items: [...groupItemsList].sort((a, b) => {
