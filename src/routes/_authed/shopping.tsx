@@ -135,7 +135,21 @@ function useShoppingMutations() {
   })
   const remove = useMutation({
     mutationFn: (key: string) => removeShoppingItem({ data: { key } }),
-    onSuccess: invalidate,
+    onMutate: async (key) => {
+      await queryClient.cancelQueries({ queryKey: shoppingKey })
+      const previous = queryClient.getQueryData<ShoppingList>(shoppingKey)
+      if (previous) {
+        queryClient.setQueryData<ShoppingList>(shoppingKey, {
+          ...previous,
+          items: previous.items.filter((i) => i.key !== key),
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, _key, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(shoppingKey, ctx.previous)
+    },
+    onSettled: invalidate,
   })
   const removeChecked = useMutation({
     mutationFn: () => removeCheckedItems(),

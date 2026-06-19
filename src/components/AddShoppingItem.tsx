@@ -56,14 +56,25 @@ export function AddShoppingItem({
     reset()
   }
 
+  // Add a brand-new ingredient under an explicitly chosen category (one click).
+  const addNew = (chosen: string) => {
+    const name = value.trim()
+    if (!name) return
+    onAdd({ name, category: chosen })
+    reset()
+  }
+
   const submit = () => {
     const name = value.trim()
     if (!name) return
-    // Reuse the catalog entry's display name/category when it's a known
-    // ingredient; otherwise save the typed name under the chosen category.
-    const match = catalog.find((c) => c.key === norm(name))
-    onAdd(match ? { name: match.name } : { name, category })
-    reset()
+    // Known ingredient → add by its catalog name (no category needed).
+    // Otherwise add as new under the currently highlighted category.
+    if (exact) {
+      onAdd({ name: exact.name })
+      reset()
+      return
+    }
+    addNew(category)
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -94,7 +105,7 @@ export function AddShoppingItem({
     }
   }
 
-  const showList = open && suggestions.length > 0
+  const showList = open && (suggestions.length > 0 || isNew)
 
   return (
     <form
@@ -128,61 +139,78 @@ export function AddShoppingItem({
             className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           />
           {showList && (
-            <ul
+            <div
               id="ingredient-suggestions"
-              role="listbox"
-              className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg"
+              className="absolute z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg"
               onMouseDown={() => {
                 // Keep focus/value while clicking an option.
                 if (blurTimer.current) clearTimeout(blurTimer.current)
               }}
             >
-              {suggestions.map((s, i) => (
-                <li key={`${s.name}-${i}`} role="option" aria-selected={i === active}>
-                  <button
-                    type="button"
-                    onMouseEnter={() => setActive(i)}
-                    onClick={() => choose(s)}
-                    className={[
-                      'flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm',
-                      i === active ? 'bg-brand-50' : 'hover:bg-stone-50',
-                    ].join(' ')}
-                  >
-                    <span className="font-medium text-stone-800">{s.name}</span>
-                    <span className="shrink-0 text-xs text-stone-400">
-                      {s.category}
-                      {s.isHousehold ? ' · egen' : ''}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+              {suggestions.length > 0 && (
+                <ul role="listbox">
+                  {suggestions.map((s, i) => (
+                    <li
+                      key={`${s.name}-${i}`}
+                      role="option"
+                      aria-selected={i === active}
+                    >
+                      <button
+                        type="button"
+                        onMouseEnter={() => setActive(i)}
+                        onClick={() => choose(s)}
+                        className={[
+                          'flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm',
+                          i === active ? 'bg-brand-50' : 'hover:bg-stone-50',
+                        ].join(' ')}
+                      >
+                        <span className="font-medium text-stone-800">{s.name}</span>
+                        <span className="shrink-0 text-xs text-stone-400">
+                          {s.category}
+                          {s.isHousehold ? ' · egen' : ''}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {isNew && (
+                <div
+                  className={
+                    suggestions.length > 0
+                      ? 'mt-1 border-t border-stone-100 px-3 pt-2 pb-1'
+                      : 'px-3 pt-1.5 pb-1'
+                  }
+                >
+                  <p className="mb-1.5 text-xs text-stone-500">
+                    Legg til «<span className="font-medium text-stone-700">{trimmed}</span>» i
+                    kategori:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {INGREDIENT_CATEGORIES.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onMouseEnter={() => setCategory(c)}
+                        onClick={() => addNew(c)}
+                        className={[
+                          'rounded-full border px-2.5 py-1 text-xs transition-colors',
+                          c === category
+                            ? 'border-brand-500 bg-brand-50 text-brand-700'
+                            : 'border-stone-200 text-stone-600 hover:border-brand-300 hover:bg-stone-50',
+                        ].join(' ')}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
-
-        {isNew && (
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            aria-label="Kategori for den nye varen"
-            title="Kategori – lagres så autofullføring husker varen"
-            className="rounded-lg border border-stone-300 bg-white px-2 py-2 text-sm text-stone-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
-          >
-            {INGREDIENT_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
-
-      {isNew && (
-        <p className="text-xs text-stone-400">
-          Ny vare – trykk Enter for å legge til i kategorien «{category}» (lagres
-          så autofullføring husker den).
-        </p>
-      )}
     </form>
   )
 }
