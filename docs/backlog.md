@@ -15,13 +15,6 @@ grouping. Update status as these get picked up.
 
 ## Quick wins / housekeeping
 
-### Tidy unpushed history before pushing — S
-There's a stack of unpushed commits on `main`, including `35c5aed` (auto-drop a
-recipe when all items checked) which `f1db1f1` fully reverts. Squash that
-add-then-revert pair, and optionally the 3-commit search feature
-(`7e70915`/`a1cbdb7`/`2a7ede5`), for a cleaner public log. Purely cosmetic — the
-maintainer pushes manually.
-
 ### Wire `pnpm test` into the workflow — S
 Now that tests exist, make the safety net automatic: a pre-push hook (Husky or a
 `.git/hooks/pre-push`) and/or a CI check on the Vercel deploy. Keeps the green
