@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { ChevronLeft } from 'lucide-react'
@@ -16,13 +16,13 @@ export const Route = createFileRoute('/_authed/recipes/new')({
   component: NewRecipePage,
 })
 
-/** One-shot read of a recipe handed off from the "Importer fra JSON" flow. Runs
- *  on the client only (the import always arrives via client-side navigation). */
-function takeImportedRecipe(): RecipeFormValues | undefined {
+/** Pure read of a recipe handed off from the "Importer fra JSON" flow (client
+ *  only). Kept side-effect-free so it's safe as a useState initializer; the
+ *  one-shot key is cleared in an effect below. */
+function readImportedRecipe(): RecipeFormValues | undefined {
   if (typeof window === 'undefined') return undefined
   const raw = window.sessionStorage.getItem(RECIPE_IMPORT_KEY)
   if (!raw) return undefined
-  window.sessionStorage.removeItem(RECIPE_IMPORT_KEY)
   try {
     return JSON.parse(raw) as RecipeFormValues
   } catch {
@@ -35,7 +35,14 @@ function NewRecipePage() {
   const queryClient = useQueryClient()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [imported] = useState(takeImportedRecipe)
+  const [imported] = useState(readImportedRecipe)
+
+  // Consume the one-shot handoff so a later plain "Ny oppskrift" starts blank.
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(RECIPE_IMPORT_KEY)
+    }
+  }, [])
 
   async function handleSubmit(values: RecipeSubmitValues) {
     setPending(true)

@@ -35,8 +35,8 @@ describe('parseRecipeImport', () => {
     expect(v.tags).toEqual(['middag', 'pasta'])
     expect(v.instructions).toBe('Stek kjøttet.')
     expect(v.ingredients).toEqual([
-      { name: 'Kjøttdeig', quantity: '400', unit: 'g', note: 'storfe' },
-      { name: 'Løk', quantity: '1', unit: 'stk', note: '' },
+      { name: 'Kjøttdeig', quantity: '400', unit: 'g', note: 'storfe', component: '' },
+      { name: 'Løk', quantity: '1', unit: 'stk', note: '', component: '' },
     ])
   })
 
@@ -49,7 +49,7 @@ describe('parseRecipeImport', () => {
     )
 
     expect(v.ingredients).toEqual([
-      { name: 'Mel', quantity: '100', unit: '', note: '' },
+      { name: 'Mel', quantity: '100', unit: '', note: '', component: '' },
     ])
   })
 
@@ -105,7 +105,7 @@ describe('parseRecipeImport', () => {
   })
 
   it('falls back to a single empty ingredient row when none are given', () => {
-    const empty = { name: '', quantity: '', unit: '', note: '' }
+    const empty = { name: '', quantity: '', unit: '', note: '', component: '' }
 
     expect(values(JSON.stringify({ title: 'A' })).ingredients).toEqual([empty])
     expect(
@@ -132,7 +132,7 @@ describe('parseRecipeImport', () => {
     expect(v.imageUrl).toBe('https://example.com/p.jpg')
     expect(v.instructions).toBe('1. Gjør noe')
     expect(v.ingredients).toEqual([
-      { name: 'Sukker', quantity: '2', unit: 'dl', note: '' },
+      { name: 'Sukker', quantity: '2', unit: 'dl', note: '', component: '' },
     ])
   })
 
@@ -148,13 +148,33 @@ describe('parseRecipeImport', () => {
     )
 
     expect(v.ingredients).toEqual([
-      { name: 'Sukker', quantity: '2', unit: 'dl', note: '' },
-      { name: 'Mel', quantity: '300', unit: 'g', note: '' },
+      { name: 'Sukker', quantity: '2', unit: 'dl', note: '', component: '' },
+      { name: 'Mel', quantity: '300', unit: 'g', note: '', component: '' },
     ])
   })
 
   it('leaves servings blank when absent', () => {
     expect(values(JSON.stringify({ title: 'A' })).servings).toBe('')
     expect(values(JSON.stringify({ title: 'A' })).uploadedImageUrl).toBeNull()
+  })
+
+  it('maps the ingredient component (and its `group`/`section` aliases)', () => {
+    const v = values(
+      JSON.stringify({
+        title: 'Test',
+        ingredients: [
+          { name: 'Hvitløk', component: 'Saus' },
+          { name: 'Kylling', group: 'Kylling' },
+          { name: 'Brød', section: 'Montering' },
+          { name: 'Salt' },
+        ],
+      }),
+    )
+    expect(v.ingredients.map((i) => i.component)).toEqual([
+      'Saus',
+      'Kylling',
+      'Montering',
+      '',
+    ])
   })
 })

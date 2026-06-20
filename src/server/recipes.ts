@@ -66,6 +66,7 @@ const ingredientInput = z.object({
   quantity: z.number().positive().nullable().optional(),
   unit: z.string().trim().max(40).nullable().optional(),
   note: z.string().trim().max(200).nullable().optional(),
+  component: z.string().trim().max(60).nullable().optional(),
 })
 
 const recipeInput = z.object({
@@ -262,6 +263,7 @@ function ingredientRows(recipeId: string, items: IngredientInputs) {
     quantity: item.quantity ?? null,
     unit: emptyToNull(item.unit ?? null),
     note: emptyToNull(item.note ?? null),
+    component: emptyToNull(item.component ?? null),
     sortOrder: index,
   }))
 }

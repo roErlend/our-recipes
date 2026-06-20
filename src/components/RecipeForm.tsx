@@ -21,6 +21,8 @@ export interface RecipeFormIngredient {
   quantity: string
   unit: string
   note: string
+  /** Optional sub-recipe/component label, e.g. "Saus". Empty = ungrouped. */
+  component: string
 }
 
 export interface RecipeFormValues {
@@ -54,6 +56,7 @@ export interface RecipeSubmitValues {
     quantity: number | null
     unit: string | null
     note: string | null
+    component: string | null
   }[]
 }
 
@@ -70,11 +73,12 @@ function initialImageState(v: RecipeFormValues): ImageState {
   return { kind: 'none' }
 }
 
-const emptyIngredient = (): RecipeFormIngredient => ({
+const emptyIngredient = (component = ''): RecipeFormIngredient => ({
   name: '',
   quantity: '',
   unit: '',
   note: '',
+  component,
 })
 
 export const emptyRecipeForm = (): RecipeFormValues => ({
@@ -142,6 +146,7 @@ export function parseRecipeImport(
         quantity: qty == null ? '' : str(qty),
         unit: str(ing.unit).trim(),
         note: str(ing.note).trim(),
+        component: str(ing.component ?? ing.group ?? ing.section).trim(),
       }
     })
     .filter((i) => i.name !== '')
@@ -203,6 +208,7 @@ function toSubmit(values: RecipeFormValues, img: ImageState): RecipeSubmitValues
         quantity: i.quantity.trim() ? Number(i.quantity) : null,
         unit: trimmed(i.unit),
         note: trimmed(i.note),
+        component: trimmed(i.component),
       })),
   }
 }
@@ -250,7 +256,14 @@ export function RecipeForm({
   }
 
   function addIngredient() {
-    setValues((v) => ({ ...v, ingredients: [...v.ingredients, emptyIngredient()] }))
+    setValues((v) => ({
+      ...v,
+      // New rows inherit the previous row's component, so you tag a group once.
+      ingredients: [
+        ...v.ingredients,
+        emptyIngredient(v.ingredients.at(-1)?.component ?? ''),
+      ],
+    }))
   }
 
   function removeIngredient(index: number) {
@@ -386,7 +399,17 @@ export function RecipeForm({
               className="flex items-start gap-2 rounded-lg border border-stone-200 bg-stone-50/60 p-2"
             >
               <GripVertical className="mt-2.5 h-4 w-4 shrink-0 text-stone-300" />
-              <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-[5rem_5rem_1fr_1fr]">
+              <div className="flex flex-1 flex-col gap-2">
+               <input
+                 value={item.component}
+                 onChange={(e) =>
+                   updateIngredient(index, { component: e.target.value })
+                 }
+                 placeholder="Komponent (valgfritt), f.eks. «Saus»"
+                 aria-label="Komponent"
+                 className="rounded-md border border-stone-200 bg-white px-2 py-1 text-xs text-stone-600 outline-none focus:border-brand-500"
+               />
+               <div className="grid grid-cols-2 gap-2 sm:grid-cols-[5rem_5rem_1fr_1fr]">
                 <input
                   value={item.quantity}
                   onChange={(e) =>
@@ -421,6 +444,7 @@ export function RecipeForm({
                   placeholder="Notat (valgfritt)"
                   className="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-500"
                 />
+               </div>
               </div>
               <Button
                 type="button"
@@ -716,6 +740,7 @@ export function parseIngredientsJson(text: string): ParseResult {
       quantity: str(qty),
       unit: str(o.unit),
       note: str(o.note),
+      component: str(o.component ?? o.group ?? o.section),
     })
   }
 

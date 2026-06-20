@@ -51,6 +51,24 @@ function formatQuantity(quantity: number | null, unit: string | null) {
   return [qty, unit].filter(Boolean).join(' ')
 }
 
+/** Group ingredients by their `component` label, preserving first-appearance
+ *  order (already sorted by sortOrder). Ungrouped ingredients share the `""` key. */
+function groupByComponent(ingredients: RecipeDetail['ingredients']) {
+  const groups: { component: string; items: RecipeDetail['ingredients'] }[] = []
+  const byKey = new Map<string, (typeof groups)[number]>()
+  for (const ing of ingredients) {
+    const key = ing.component?.trim() || ''
+    let group = byKey.get(key)
+    if (!group) {
+      group = { component: key, items: [] }
+      byKey.set(key, group)
+      groups.push(group)
+    }
+    group.items.push(ing)
+  }
+  return groups
+}
+
 function RecipeDetailPage() {
   const { recipeId } = Route.useParams()
   const queryClient = useQueryClient()
@@ -304,27 +322,38 @@ function RecipeDetailPage() {
             <h2 className="mb-3 text-lg font-semibold text-stone-900">
               Ingredienser
             </h2>
-            <ul className="flex flex-col gap-2">
-              {recipe.ingredients.map((ing) => {
-                const amount = formatQuantity(ing.quantity, ing.unit)
-                return (
-                  <li
-                    key={ing.id}
-                    className="flex items-baseline gap-2 border-b border-stone-100 pb-2 text-sm last:border-0"
-                  >
-                    {amount && (
-                      <span className="font-medium text-stone-900">
-                        {amount}
-                      </span>
-                    )}
-                    <span className="text-stone-700">{ing.name}</span>
-                    {ing.note && (
-                      <span className="text-stone-400">({ing.note})</span>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
+            <div className="flex flex-col gap-4">
+              {groupByComponent(recipe.ingredients).map((group) => (
+                <div key={group.component || '__none'}>
+                  {group.component && (
+                    <h3 className="mb-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
+                      {group.component}
+                    </h3>
+                  )}
+                  <ul className="flex flex-col gap-2">
+                    {group.items.map((ing) => {
+                      const amount = formatQuantity(ing.quantity, ing.unit)
+                      return (
+                        <li
+                          key={ing.id}
+                          className="flex items-baseline gap-2 border-b border-stone-100 pb-2 text-sm last:border-0"
+                        >
+                          {amount && (
+                            <span className="font-medium text-stone-900">
+                              {amount}
+                            </span>
+                          )}
+                          <span className="text-stone-700">{ing.name}</span>
+                          {ing.note && (
+                            <span className="text-stone-400">({ing.note})</span>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
           </section>
         )}
 

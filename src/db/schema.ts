@@ -133,6 +133,13 @@ export const ingredient = pgTable('ingredient', {
   unit: text('unit'),
   /** Optional note, e.g. "finely chopped". */
   note: text('note'),
+  /**
+   * Optional sub-recipe / component this ingredient belongs to, e.g. "Saus" or
+   * "Kylling". Purely a display grouping on the recipe — the shopping list
+   * aggregates by item key across components, so it never affects totals. Null =
+   * ungrouped.
+   */
+  component: text('component'),
   sortOrder: integer('sort_order').notNull().default(0),
 })
 
