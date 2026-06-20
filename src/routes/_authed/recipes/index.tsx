@@ -27,22 +27,49 @@ import {
   removeRecipeFromShopping,
 } from '@/server/shopping'
 
+type SortKey = 'rating' | 'new' | 'az'
+
+// 'rating' is the default and is omitted from the URL; the others are explicit.
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'rating', label: 'Best vurdert' },
+  { value: 'new', label: 'Nyeste' },
+  { value: 'az', label: 'Alfabetisk (A–Å)' },
+]
+
+// Sort comparators applied *within* the shopping-list grouping (list items
+// always float to the top). All read from the already-fetched list, so changing
+// sort never re-runs the loader.
+const SORT_COMPARATORS: Record<
+  SortKey,
+  (a: RecipeListItem, b: RecipeListItem) => number
+> = {
+  rating: (a, b) =>
+    b.ratingAvg - a.ratingAvg ||
+    b.ratingCount - a.ratingCount ||
+    new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  new: (a, b) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  az: (a, b) => a.title.localeCompare(b.title, 'nb'),
+}
+
 export const Route = createFileRoute('/_authed/recipes/')({
-  // Keep the search term (?q=…) and selected tag filter (?tags=…) in the URL so
-  // they survive back-navigation from a recipe and are deep-linkable. The loader
-  // reads neither, so typing/toggling only re-filters client-side — it never
-  // re-runs the loader. Both are optional (and omitted when empty) so other links
-  // to /recipes needn't pass them.
+  // Keep the search term (?q=…), tag filter (?tags=…) and sort (?sort=…) in the
+  // URL so they survive back-navigation from a recipe and are deep-linkable. The
+  // loader reads none of them, so typing/toggling/sorting only re-filters
+  // client-side — it never re-runs the loader. All are optional (and omitted
+  // when at their default) so other links to /recipes needn't pass them.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { q?: string; tags?: string[] } => {
+  ): { q?: string; tags?: string[]; sort?: SortKey } => {
     const q = typeof search.q === 'string' ? search.q : ''
     const rawTags = search.tags
     const tags = (Array.isArray(rawTags) ? rawTags : [rawTags])
       .filter((t): t is string => typeof t === 'string' && t.length > 0)
+    const sort = search.sort === 'new' || search.sort === 'az' ? search.sort : undefined
     return {
       ...(q ? { q } : {}),
       ...(tags.length ? { tags } : {}),
+      ...(sort ? { sort } : {}),
     }
   },
   loader: ({ context }) =>
@@ -58,10 +85,15 @@ function RecipesPage() {
   // straight to the async URL state drops fast keystrokes). The URL `q` only
   // seeds state on mount — including when this route remounts on back-navigation
   // from a recipe — so the term is restored; local state is authoritative after.
-  const { q: initialSearch = '', tags: initialTags = [] } = Route.useSearch()
+  const {
+    q: initialSearch = '',
+    tags: initialTags = [],
+    sort: initialSort = 'rating',
+  } = Route.useSearch()
   const [search, setSearch] = useState(initialSearch)
   // Selected tag filter, also URL-seeded on mount and kept in the URL below.
   const [activeTags, setActiveTags] = useState<string[]>(initialTags)
+  const [sort, setSort] = useState<SortKey>(initialSort)
   // The tag list is tucked behind a toggle so it never crowds the page; open it
   // by default when arriving with a filter already applied (e.g. a deep link).
   const [showFilters, setShowFilters] = useState(initialTags.length > 0)
@@ -99,6 +131,14 @@ function RecipesPage() {
     syncTags([])
   }
 
+  const onSortChange = (value: SortKey) => {
+    setSort(value)
+    void navigate({
+      search: (s) => ({ ...s, sort: value === 'rating' ? undefined : value }),
+      replace: true,
+    })
+  }
+
   const recipesKey = recipesQueryOptions().queryKey
 
   const onListCount = recipes.filter((r) => r.inShoppingList).length
@@ -123,13 +163,15 @@ function RecipesPage() {
       const matchesTags = activeTags.every((t) => r.tags.includes(t))
       return matchesTerm && matchesTags
     })
-    // Recipes already on the shopping list float to the top; the sort is stable
-    // so the default (rating) order is preserved within each group. Toggling a
-    // recipe on/off the list re-sorts it live via the optimistic update.
+    // Recipes already on the shopping list float to the top; within each group
+    // the chosen sort applies. Toggling a recipe on/off the list re-sorts it
+    // live via the optimistic update.
     return [...matched].sort(
-      (a, b) => Number(b.inShoppingList) - Number(a.inShoppingList),
+      (a, b) =>
+        Number(b.inShoppingList) - Number(a.inShoppingList) ||
+        SORT_COMPARATORS[sort](a, b),
     )
-  }, [recipes, search, activeTags])
+  }, [recipes, search, activeTags, sort])
 
   const shoppingMutation = useMutation({
     mutationFn: (vars: { id: string; inList: boolean }) =>
@@ -172,8 +214,8 @@ function RecipesPage() {
         <NewRecipeMenu />
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[12rem] flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <input
             value={search}
@@ -182,6 +224,18 @@ function RecipesPage() {
             className="w-full rounded-lg border border-stone-300 bg-white py-2 pr-3 pl-9 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           />
         </div>
+        <select
+          value={sort}
+          onChange={(e) => onSortChange(e.target.value as SortKey)}
+          aria-label="Sorter oppskrifter"
+          className="shrink-0 rounded-lg border border-stone-300 bg-white py-2 pr-8 pl-3 text-sm text-stone-700 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+        >
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
         {allTags.length > 0 && (
           <button
             type="button"
