@@ -44,10 +44,11 @@ Each `ingredients` item:
 
 | Field      | Type            | Required | Notes                                                    |
 | ---------- | --------------- | -------- | -------------------------------------------------------- |
-| `name`     | string          | yes      | The ingredient in **Norwegian** (translate — see Language), e.g. `"Hvitløk"`. |
-| `quantity` | number \| null  | no       | Numeric amount only. `null`/omit when there's none.       |
-| `unit`     | string \| null  | no       | Metric unit, e.g. `"g"`, `"dl"`, `"ss"`.                  |
-| `note`     | string \| null  | no       | Prep/qualifier, e.g. `"finhakket"`, `"romtemperert"`.     |
+| `name`      | string          | yes      | The ingredient in **Norwegian** (translate — see Language), e.g. `"Hvitløk"`. |
+| `quantity`  | number \| null  | no       | Numeric amount only. `null`/omit when there's none.       |
+| `unit`      | string \| null  | no       | Metric unit, e.g. `"g"`, `"dl"`, `"ss"`.                  |
+| `note`      | string \| null  | no       | Prep/qualifier, e.g. `"finhakket"`, `"romtemperert"`.     |
+| `component` | string \| null  | no       | The sub-recipe this ingredient belongs to, in **Norwegian**, e.g. `"Saus"`, `"Kylling"`, `"Montering"`. Set it when the page splits ingredients into parts; the app groups by it. Omit/`null` for single-part recipes. The same ingredient may appear under two components — that's fine. |
 
 ## Conversion rules (same as `ingredients-to-json`)
 
@@ -112,16 +113,18 @@ use `1.`, `2.`, … Translate the steps to Norwegian (see **Language**). Example
   "instructions": "1. Kok spagettien al dente.\n2. Stek guanciale sprø.\n3. Visp egg, eggeplomme og parmesan.\n4. Bland alt utenfor varmen og spe med pastavann.",
   "tags": ["italiensk", "pasta"],
   "ingredients": [
-    { "name": "Spaghetti", "quantity": 400, "unit": "g" },
-    { "name": "Guanciale", "quantity": 150, "unit": "g", "note": "i terninger" },
-    { "name": "Egg", "quantity": 3, "unit": "stk" },
-    { "name": "Eggeplomme", "quantity": 1, "unit": "stk" },
-    { "name": "Parmesan", "quantity": 50, "unit": "g", "note": "revet" },
-    { "name": "Sort pepper" },
-    { "name": "Salt" }
+    { "name": "Spaghetti", "quantity": 400, "unit": "g", "component": "Pasta" },
+    { "name": "Guanciale", "quantity": 150, "unit": "g", "note": "i terninger", "component": "Saus" },
+    { "name": "Egg", "quantity": 3, "unit": "stk", "component": "Saus" },
+    { "name": "Eggeplomme", "quantity": 1, "unit": "stk", "component": "Saus" },
+    { "name": "Parmesan", "quantity": 50, "unit": "g", "note": "revet", "component": "Saus" },
+    { "name": "Sort pepper", "component": "Saus" },
+    { "name": "Salt", "component": "Pasta" }
   ]
 }
 ```
+
+(For a single-part recipe, omit `component` entirely.)
 
 ## Finishing up
 
