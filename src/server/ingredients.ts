@@ -1,11 +1,12 @@
 import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
-import { and, eq, isNull, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 
 import { db } from '@/db'
 import { ingredientCatalog, ingredientCategory } from '@/db/schema'
 import {
   categoryRank,
   DEFAULT_CATEGORY,
+  guessIngredientCategory,
   INGREDIENT_CATEGORIES,
   isCanonicalCategory,
   normalizeCategory,
@@ -198,5 +199,58 @@ export const saveHouseholdIngredient = createServerOnlyFn(
   // Make the chosen category first-class, just like an admin-created one.
   await ensureCategoryRow(tx, cat)
 })
+
+/**
+ * Ensure every given ingredient name exists in the catalog for this household,
+ * creating a household-scoped row (with a {@link guessIngredientCategory}
+ * category) for any that don't — stock and existing household rows are left
+ * untouched. Used when saving a recipe so its ingredients (especially imported
+ * ones) feed the shopping-list autocomplete and get a sensible category. Names
+ * are deduped; blanks are skipped. Server-only; runs inside the caller's
+ * transaction.
+ */
+export const ensureCatalogIngredients = createServerOnlyFn(
+  async (
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    householdId: string,
+    names: string[],
+  ) => {
+    const byKey = new Map<string, string>()
+    for (const raw of names) {
+      const name = raw.trim()
+      const key = nameKey(name)
+      if (key && !byKey.has(key)) byKey.set(key, name)
+    }
+    if (!byKey.size) return
+
+    // Skip names already known to this household (its own rows or shared stock).
+    const existing = await tx
+      .select({ nameKey: ingredientCatalog.nameKey })
+      .from(ingredientCatalog)
+      .where(
+        and(
+          inArray(ingredientCatalog.nameKey, [...byKey.keys()]),
+          or(
+            isNull(ingredientCatalog.scopeId),
+            eq(ingredientCatalog.scopeId, householdId),
+          ),
+        ),
+      )
+    const existingKeys = new Set(existing.map((r) => r.nameKey))
+
+    const rows = [...byKey.entries()]
+      .filter(([key]) => !existingKeys.has(key))
+      .map(([key, name]) => ({
+        scopeId: householdId,
+        name,
+        nameKey: key,
+        category: guessIngredientCategory(name),
+      }))
+    if (!rows.length) return
+
+    // onConflictDoNothing guards against a race on the household unique index.
+    await tx.insert(ingredientCatalog).values(rows).onConflictDoNothing()
+  },
+)
 
 export { DEFAULT_CATEGORY }

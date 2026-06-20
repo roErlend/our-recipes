@@ -9,7 +9,7 @@ import {
   type RecipeSubmitValues,
 } from '@/components/RecipeForm'
 import { RECIPE_IMPORT_KEY } from '@/components/NewRecipeMenu'
-import { recipesQueryOptions } from '@/lib/queries'
+import { ingredientsQueryOptions, recipesQueryOptions } from '@/lib/queries'
 import { createRecipe } from '@/server/recipes'
 
 export const Route = createFileRoute('/_authed/recipes/new')({
@@ -49,9 +49,15 @@ function NewRecipePage() {
     setError(null)
     try {
       const created = await createRecipe({ data: values })
-      await queryClient.invalidateQueries({
-        queryKey: recipesQueryOptions().queryKey,
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: recipesQueryOptions().queryKey,
+        }),
+        // New ingredients may have joined the catalog — refresh autocomplete.
+        queryClient.invalidateQueries({
+          queryKey: ingredientsQueryOptions().queryKey,
+        }),
+      ])
       router.navigate({
         to: '/recipes/$recipeId',
         params: { recipeId: created.id },

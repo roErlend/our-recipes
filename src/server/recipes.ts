@@ -21,6 +21,7 @@ import {
   user as userTable,
 } from '@/db/schema'
 import { requireUser } from '@/server/auth'
+import { ensureCatalogIngredients } from '@/server/ingredients'
 import { accessibleScope } from '@/server/sharing'
 
 /** Rating aggregates (sum + count) for a set of recipes, keyed by recipe id. */
@@ -320,6 +321,7 @@ export const createRecipe = createServerFn({ method: 'POST' })
   .validator((input: unknown) => recipeInput.parse(input))
   .handler(async ({ data }) => {
     const user = await requireUser()
+    const { householdId } = await accessibleScope(user.id)
 
     const created = await db.transaction(async (tx) => {
       const [row] = await tx
@@ -338,6 +340,12 @@ export const createRecipe = createServerFn({ method: 'POST' })
       if (data.ingredients.length) {
         await tx.insert(ingredient).values(ingredientRows(row.id, data.ingredients))
       }
+      // New ingredients (e.g. from an import) join the catalog for autocomplete.
+      await ensureCatalogIngredients(
+        tx,
+        householdId,
+        data.ingredients.map((i) => i.name),
+      )
       await applyRecipeImage(tx, row.id, data)
       return row
     })
@@ -353,6 +361,7 @@ export const updateRecipe = createServerFn({ method: 'POST' })
     const user = await requireUser()
     const { id, ingredients, ...fields } = data
     await assertCanAdminister(user.id, id)
+    const { householdId } = await accessibleScope(user.id)
 
     await db.transaction(async (tx) => {
       await tx
@@ -372,6 +381,11 @@ export const updateRecipe = createServerFn({ method: 'POST' })
       if (ingredients.length) {
         await tx.insert(ingredient).values(ingredientRows(id, ingredients))
       }
+      await ensureCatalogIngredients(
+        tx,
+        householdId,
+        ingredients.map((i) => i.name),
+      )
       await applyRecipeImage(tx, id, {
         imageUpload: fields.imageUpload,
         clearUploadedImage: fields.clearUploadedImage,

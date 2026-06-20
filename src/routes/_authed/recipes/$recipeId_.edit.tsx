@@ -11,6 +11,7 @@ import {
 import { RecipeImportModal } from '@/components/RecipeImportModal'
 import { Button } from '@/components/ui/Button'
 import {
+  ingredientsQueryOptions,
   recipeQueryOptions,
   recipesQueryOptions,
   shoppingQueryOptions,
@@ -94,6 +95,10 @@ function EditRecipePage() {
         }),
         queryClient.invalidateQueries({
           queryKey: shoppingQueryOptions().queryKey,
+        }),
+        // New ingredients may have joined the catalog — refresh autocomplete.
+        queryClient.invalidateQueries({
+          queryKey: ingredientsQueryOptions().queryKey,
         }),
       ])
       router.navigate({
