@@ -54,6 +54,14 @@ Each `ingredients` item:
 1. **Numbers** → `quantity`: `1/2` → `0.5`, `1,5` → `1.5`, `½` → `0.5`.
 2. **Units** → `unit`, kept **metric**. Convert imperial: 1 cup ≈ 2.4 dl,
    1 tbsp ≈ 1 ss, 1 tsp ≈ 1 ts, 1 oz ≈ 28 g, 1 lb ≈ 450 g, °F → °C.
+   - **Prefer spoon/volume units over weight when a source gives both.** For
+     `1 tsp (4 g)` use `1 ts`, not `4 g` — spoons are friendlier to cook with.
+     Same for `ss`/`dl`/`ml`. Keep weight (`g`/`kg`) for things normally weighed
+     (meat, vegetables, cheese, larger amounts) and for `stk`/`fedd` where those
+     fit best.
+   - **Cups:** convert to metric as usual (1 cup ≈ 2.4 dl), but **keep the
+     original `… cup(s)` in the `note`, in parentheses** — e.g. `1,8 dl` with
+     note `"(¾ cup)"`, or `2,4–3,6 dl` with note `"(1–1½ cups)"`.
 3. **Prep words** ("finely chopped", "delt i to", "romtemperert") → `note`, not `name`.
 4. **No number** → omit `quantity` (e.g. "Salt etter smak" → `{ "name": "Salt" }`).
 5. **Ranges** ("2-3 ss") → pick the lower value, put the range in `note` (`"2–3"`).
