@@ -6,16 +6,15 @@ import {
 } from '@tanstack/react-query'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import {
-  Check,
   ChevronLeft,
   ExternalLink,
   Pencil,
-  ShoppingCart,
   Star,
   Trash2,
   Users,
 } from 'lucide-react'
 
+import { AddToShoppingMenu } from '@/components/AddToShoppingMenu'
 import { Button } from '@/components/ui/Button'
 import { StarRating } from '@/components/StarRating'
 import {
@@ -29,10 +28,6 @@ import {
   removeRecipeRating,
   setRecipeRating,
 } from '@/server/recipes'
-import {
-  addRecipeToShopping,
-  removeRecipeFromShopping,
-} from '@/server/shopping'
 
 /** "7,7" — one decimal, Norwegian comma. */
 function formatAvg(avg: number) {
@@ -77,32 +72,6 @@ function RecipeDetailPage() {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const recipeKey = recipeQueryOptions(recipeId).queryKey
-
-  const shoppingMutation = useMutation({
-    mutationFn: (inList: boolean) =>
-      inList
-        ? addRecipeToShopping({ data: { recipeId } })
-        : removeRecipeFromShopping({ data: { recipeId } }),
-    onMutate: async (inList) => {
-      await queryClient.cancelQueries({ queryKey: recipeKey })
-      const previous = queryClient.getQueryData<RecipeDetail | null>(recipeKey)
-      if (previous) {
-        queryClient.setQueryData<RecipeDetail>(recipeKey, {
-          ...previous,
-          inShoppingList: inList,
-        })
-      }
-      return { previous }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previous !== undefined)
-        queryClient.setQueryData(recipeKey, ctx.previous)
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: recipesQueryOptions().queryKey })
-      queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
-    },
-  })
 
   const ratingMutation = useMutation({
     mutationFn: (score: number) =>
@@ -156,7 +125,6 @@ function RecipeDetailPage() {
     )
   }
 
-  const toggleShopping = () => shoppingMutation.mutate(!recipe.inShoppingList)
   const handleDelete = () => deleteMutation.mutate()
   const deleting = deleteMutation.isPending
   const imageSrc = recipe.uploadedImageUrl ?? recipe.imageUrl
@@ -233,23 +201,7 @@ function RecipeDetailPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           {recipe.ingredients.length > 0 ? (
-            <Button
-              variant={recipe.inShoppingList ? 'secondary' : 'primary'}
-              onPress={toggleShopping}
-              isDisabled={shoppingMutation.isPending}
-            >
-              {recipe.inShoppingList ? (
-                <>
-                  <Check className="h-4 w-4" />
-                  På handlelisten
-                </>
-              ) : (
-                <>
-                  <ShoppingCart className="h-4 w-4" />
-                  Legg til handleliste
-                </>
-              )}
-            </Button>
+            <AddToShoppingMenu recipe={recipe} />
           ) : null}
           {!recipe.isOwner && recipe.ownerName && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">

@@ -6,7 +6,10 @@ import { db } from '@/db'
 import { recipe, shoppingCheck, shoppingEntry } from '@/db/schema'
 import type { NewShoppingEntry } from '@/db/schema'
 import { DEFAULT_CATEGORY } from '@/lib/categories'
-import { aggregateShoppingEntries } from '@/lib/shopping-aggregate'
+import {
+  aggregateShoppingEntries,
+  shoppingItemKey,
+} from '@/lib/shopping-aggregate'
 import type { ShoppingList } from '@/lib/shopping-aggregate'
 import { requireUser } from '@/server/auth'
 import {
@@ -21,9 +24,7 @@ import { accessibleScope } from '@/server/sharing'
 export type { ShoppingItem, ShoppingList } from '@/lib/shopping-aggregate'
 
 /** Normalized grouping key for a shopping line. Mirrored by `shopping_entry.item_key`. */
-function itemKey(name: string, unit: string | null) {
-  return `${name.trim().toLowerCase()}__${(unit ?? '').trim().toLowerCase()}`
-}
+const itemKey = shoppingItemKey
 
 const emptyToNull = (v: string | null | undefined) =>
   v == null || v.trim() === '' ? null : v.trim()
@@ -102,11 +103,18 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
 
 /* ----------------------------- mutations -------------------------------- */
 
-/** Add every ingredient of a recipe to the list. Idempotent: re-adding replaces
- *  that recipe's previous contributions (so it tracks the recipe's current content). */
+/** Add a recipe's ingredients to the list. Idempotent: re-adding replaces that
+ *  recipe's previous contributions (so it tracks the recipe's current content).
+ *  When `itemKeys` is given, only those lines are added — letting the caller
+ *  exclude ingredients they already have; omit/`null` adds every ingredient. */
 export const addRecipeToShopping = createServerFn({ method: 'POST' })
-  .validator((input: { recipeId: string }) =>
-    z.object({ recipeId: z.string().min(1) }).parse(input),
+  .validator((input: { recipeId: string; itemKeys?: string[] | null }) =>
+    z
+      .object({
+        recipeId: z.string().min(1),
+        itemKeys: z.array(z.string().min(1)).nullable().optional(),
+      })
+      .parse(input),
   )
   .handler(async ({ data }) => {
     const user = await requireUser()
@@ -142,6 +150,13 @@ export const addRecipeToShopping = createServerFn({ method: 'POST' })
       }
     }
 
+    // Restrict to the chosen lines when a selection is given (the picker passes
+    // the item keys to keep); no selection means the whole recipe.
+    const selected = data.itemKeys ? new Set(data.itemKeys) : null
+    const rows = [...byKey.values()].filter(
+      (row) => !selected || selected.has(row.itemKey),
+    )
+
     await db.transaction(async (tx) => {
       await tx
         .delete(shoppingEntry)
@@ -151,7 +166,6 @@ export const addRecipeToShopping = createServerFn({ method: 'POST' })
             eq(shoppingEntry.sourceRecipeId, r.id),
           ),
         )
-      const rows = [...byKey.values()]
       if (rows.length) await tx.insert(shoppingEntry).values(rows)
 
       // Adding a recipe means its items are needed again, so clear any leftover
@@ -171,7 +185,7 @@ export const addRecipeToShopping = createServerFn({ method: 'POST' })
       }
     })
 
-    return { recipeId: r.id, added: byKey.size }
+    return { recipeId: r.id, added: rows.length }
   })
 
 /** Remove a recipe's contributions from the list (its items, possibly merged

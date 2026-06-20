@@ -38,6 +38,13 @@ export interface ShoppingList {
   scopeId: string
 }
 
+/** Normalized grouping key for a shopping line — `name__unit`, lowercased.
+ *  Mirrored by `shopping_entry.item_key`; shared by the server and the client
+ *  picker so a selected ingredient maps to exactly the line it produces. */
+export function shoppingItemKey(name: string, unit: string | null | undefined) {
+  return `${name.trim().toLowerCase()}__${(unit ?? '').trim().toLowerCase()}`
+}
+
 /** One `shopping_entry` contribution, in the shape the aggregation needs. */
 export interface ShoppingEntryInput {
   itemKey: string
