@@ -2,14 +2,20 @@ import { createCollection } from '@tanstack/react-db'
 import { electricCollectionOptions } from '@tanstack/electric-db-collection'
 import { z } from 'zod'
 
-import { clearShoppingChecks, setShoppingChecked } from '@/server/shopping'
-
 /**
  * Realtime "ticked off" state for the shared shopping list, synced from the
  * `shopping_check` table via Electric. When either household member ticks a
  * box, the write goes to Postgres through our server functions; Electric then
  * streams the row change to every member's browser, so their lists stay in
  * sync without a refresh.
+ *
+ * **Read-only collection.** Writes don't go through TanStack DB's optimistic
+ * transactions — they're queued in the offline outbox (`@/lib/offline`) and
+ * replayed through the server fns, so a check survives a network drop instead of
+ * being rolled back. The optimistic overlay lives in the outbox; this collection
+ * is just the synced server truth (the same model the entries collection uses).
+ * `utils.awaitTxId` lets the flusher wait for a write to round-trip before
+ * dropping its pending overlay.
  *
  * Only the household's own rows arrive here — the `/api/shapes/shopping` proxy
  * pins the `where` clause server-side. The columns mirror the proxy's
@@ -48,29 +54,6 @@ export const shoppingChecksCollection = createCollection(
     },
     schema: shoppingCheckRow,
     getKey: (row) => row.item_key,
-    // Writes are persisted through the existing server functions, which return
-    // the Postgres txid so TanStack DB can match the synced change and clear
-    // the optimistic state. Toggling is an upsert server-side, so insert and
-    // update both route to setShoppingChecked.
-    onInsert: async ({ transaction }) => {
-      const row = transaction.mutations[0].modified
-      const { txid } = await setShoppingChecked({
-        data: { key: row.item_key, checked: row.checked },
-      })
-      return { txid }
-    },
-    onUpdate: async ({ transaction }) => {
-      const row = transaction.mutations[0].modified
-      const { txid } = await setShoppingChecked({
-        data: { key: row.item_key, checked: row.checked },
-      })
-      return { txid }
-    },
-    // The only delete path is "reset", which clears the whole household list.
-    onDelete: async () => {
-      const { txid } = await clearShoppingChecks()
-      return { txid }
-    },
   }),
 )
 

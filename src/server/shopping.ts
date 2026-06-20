@@ -334,21 +334,28 @@ export const setItemQuantity = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireUser()
     const { householdId } = await accessibleScope(user.id)
-    await db
-      .insert(shoppingCheck)
-      .values({
-        scopeId: householdId,
-        itemKey: data.key,
-        checked: false,
-        overrideQuantity: data.quantity,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [shoppingCheck.scopeId, shoppingCheck.itemKey],
-        // Only touch the override — leave the checked state as-is.
-        set: { overrideQuantity: data.quantity, updatedAt: new Date() },
-      })
-    return { key: data.key, quantity: data.quantity }
+    // Return the txid (like setShoppingChecked) so the offline flusher can wait
+    // for the override row to round-trip via Electric before dropping its
+    // pending overlay.
+    const txid = await db.transaction(async (tx) => {
+      const [{ txid }] = await tx.execute(TXID_SQL)
+      await tx
+        .insert(shoppingCheck)
+        .values({
+          scopeId: householdId,
+          itemKey: data.key,
+          checked: false,
+          overrideQuantity: data.quantity,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [shoppingCheck.scopeId, shoppingCheck.itemKey],
+          // Only touch the override — leave the checked state as-is.
+          set: { overrideQuantity: data.quantity, updatedAt: new Date() },
+        })
+      return Number(txid)
+    })
+    return { key: data.key, quantity: data.quantity, txid }
   })
 
 /** Remove all currently ticked-off items from the list ("Fjern avhukede"). */

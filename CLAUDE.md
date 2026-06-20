@@ -11,7 +11,8 @@ Read the doc that matches the task before diving into code:
 - [docs/architecture.md](docs/architecture.md) — tech stack, rendering model, full source map, "where to look first".
 - [docs/data-model.md](docs/data-model.md) — DB schema relationships: households/scope, recipes, the **materialized** shopping list + `item_key`, ingredient catalog.
 - [docs/patterns.md](docs/patterns.md) — server-fn shape, auth guards, query/cache conventions, optimistic mutations, URL-synced search, UI conventions.
-- [docs/realtime-shopping-list.md](docs/realtime-shopping-list.md) — Electric + TanStack DB: the two shapes, checks (direct/optimistic) vs entries (signal→refetch).
+- [docs/realtime-shopping-list.md](docs/realtime-shopping-list.md) — Electric + TanStack DB: the two read-only shapes; checks (synced truth) vs entries (signal→refetch).
+- [docs/offline-shopping-mode.md](docs/offline-shopping-mode.md) — in-store offline: query snapshot cache (readable offline) + durable mutation outbox (check/quantity queued, flushed on reconnect); the outbox *is* the optimistic overlay.
 - [docs/gotchas.md](docs/gotchas.md) — server-import leak, SSR-unsafe `useLiveQuery`, dev image shim, stale service worker, port sprawl, generated files.
 - [docs/dev-workflow.md](docs/dev-workflow.md) — commands, env vars, schema migrations, deployment, agent working notes.
 

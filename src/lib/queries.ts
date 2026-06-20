@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 
+import { withOfflineCache } from '@/lib/offline'
 import { adminListIngredients } from '@/server/admin'
 import { listCategories, listIngredients } from '@/server/ingredients'
 import { getRecipe, listRecipes } from '@/server/recipes'
@@ -20,11 +21,12 @@ export const recipeQueryOptions = (id: string) =>
     queryFn: () => getRecipe({ data: id }),
   })
 
-/** Aggregated shopping list across active recipes. */
+/** Aggregated shopping list across active recipes. Cached for offline use so the
+ *  list still opens in a shop with no signal (see {@link withOfflineCache}). */
 export const shoppingQueryOptions = () =>
   queryOptions({
     queryKey: ['shopping'] as const,
-    queryFn: () => getShoppingList(),
+    queryFn: withOfflineCache('shopping', () => getShoppingList()),
   })
 
 /**
@@ -35,7 +37,7 @@ export const shoppingQueryOptions = () =>
 export const ingredientsQueryOptions = () =>
   queryOptions({
     queryKey: ['ingredients'] as const,
-    queryFn: () => listIngredients(),
+    queryFn: withOfflineCache('ingredients', () => listIngredients()),
     staleTime: 5 * 60 * 1000,
   })
 
@@ -43,7 +45,7 @@ export const ingredientsQueryOptions = () =>
 export const categoriesQueryOptions = () =>
   queryOptions({
     queryKey: ['categories'] as const,
-    queryFn: () => listCategories(),
+    queryFn: withOfflineCache('categories', () => listCategories()),
     staleTime: 5 * 60 * 1000,
   })
 

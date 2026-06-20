@@ -11,8 +11,12 @@ and a TanStack DB collection in `src/lib/shopping-collection.ts`:
 
 | Shape          | Table            | Columns                                   | Client uses it to… |
 | -------------- | ---------------- | ----------------------------------------- | ------------------ |
-| `shopping`     | `shopping_check` | `checked` / `override_quantity`           | `checked` → **read directly** (ticked-off overlay, optimistic); `override_quantity` → **signal** (refetch on change) |
+| `shopping`     | `shopping_check` | `checked` / `override_quantity`           | `checked` → **read directly** (synced truth; the optimistic overlay is the offline outbox, not the collection); `override_quantity` → **signal** (refetch on change) |
 | `shopping-entries` | `shopping_entry` | list contents                         | **signal only** — detect contents changing, then refetch |
+
+> Both collections are **read-only**. Writes never go through TanStack DB's
+> optimistic transactions — see "Checks + quantities" below and
+> [offline-shopping-mode.md](offline-shopping-mode.md).
 
 > The `shopping` shape carries two columns with *different* sync styles.
 > `checked` is read straight from the collection (a per-row overlay → instant
@@ -28,14 +32,28 @@ go through Electric** — they go through the existing server functions
 (`setShoppingChecked`, `addRecipeToShopping`, …) → Postgres → Electric streams the
 change back to every browser.
 
-## Checks: direct read, optimistic
+## Checks + quantities: read-only collection, writes via the offline outbox
 
-`shopping_check` rows are read straight from the collection via `useLiveQuery`.
-Toggling calls `shoppingChecksCollection.update/insert`, which is **optimistic**
-(the checkbox flips immediately, ~instant, not after a round-trip). The collection's
-`onInsert/onUpdate/onDelete` call the server fns, which run the write **and**
-`SELECT pg_current_xact_id()` in the same transaction and return the `txid`;
-TanStack DB matches that `txid` in the synced stream to clear its optimistic state.
+`shopping_check` rows are read straight from the collection via `useLiveQuery` for
+the **synced server truth**. The collection is **read-only** — it defines no
+`onInsert/onUpdate/onDelete`. Writes (check toggles and quantity overrides) instead
+go through the **durable offline outbox** in `src/lib/offline.ts` (see
+[offline-shopping-mode.md](offline-shopping-mode.md)):
+
+- Toggling enqueues a `check` op; editing an amount enqueues a `quantity` op
+  (coalesced per item). The **outbox is the optimistic overlay** — a pending op
+  wins over the synced value until it has flushed, so the box flips instantly and
+  *stays* flipped even if the network is down (or the page reloads offline).
+- `flushOutbox` replays ops via the server fns (`setShoppingChecked` /
+  `setItemQuantity`), which run the write **and** `SELECT pg_current_xact_id()` in
+  one transaction and return the `txid`. The flusher waits for that txid via
+  `shoppingChecksCollection.utils.awaitTxId(...)` before dropping the pending
+  overlay, so there's no flicker between "queued" and "synced".
+
+> Earlier this path used the collection's own optimistic transactions
+> (`collection.update` → `onUpdate` → server fn → txid match). That **rolled the
+> optimistic flip back when the write failed offline** — the whole point of the
+> outbox is to keep it instead and retry on reconnect.
 
 ## Entries: signal → refetch (NOT direct read)
 

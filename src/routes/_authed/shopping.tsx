@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from '@tanstack/react-db'
 import {
   useMutation,
@@ -6,12 +6,27 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ListChecks, Minus, Plus, ShoppingCart, Trash2, X } from 'lucide-react'
+import {
+  ListChecks,
+  Minus,
+  Plus,
+  ShoppingCart,
+  Trash2,
+  WifiOff,
+  X,
+} from 'lucide-react'
 
 import { AddShoppingItem } from '@/components/AddShoppingItem'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { categoryRank, DEFAULT_CATEGORY } from '@/lib/categories'
+import {
+  enqueueOp,
+  flushOutbox,
+  useOnline,
+  useOutbox,
+  type OutboxOp,
+} from '@/lib/offline'
 import {
   categoriesQueryOptions,
   ingredientsQueryOptions,
@@ -27,6 +42,7 @@ import {
   removeCheckedItems,
   removeShoppingItem,
   setItemQuantity,
+  setShoppingChecked,
   type ShoppingItem,
   type ShoppingList,
 } from '@/server/shopping'
@@ -99,6 +115,63 @@ function useMounted() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   return mounted
+}
+
+/** Wait for a write's txid to round-trip via Electric before dropping its pending
+ *  overlay — best-effort, so a missing/stalled sync never blocks the flush. */
+async function awaitTxIdSafe(txid: number) {
+  try {
+    await shoppingChecksCollection.utils.awaitTxId(txid, 8000)
+  } catch {
+    /* timed out or not syncing — proceed anyway */
+  }
+}
+
+/**
+ * Drives the offline outbox: builds the executor that replays a queued op via the
+ * server fns, and flushes on mount, on reconnect, and when the tab becomes
+ * visible. Returns a `flush` to call right after enqueuing (a no-op when offline).
+ */
+function useShoppingFlush() {
+  const queryClient = useQueryClient()
+  const execute = useCallback(
+    async (op: OutboxOp) => {
+      if (op.type === 'check') {
+        const { txid } = await setShoppingChecked({
+          data: { key: op.key, checked: op.value },
+        })
+        await awaitTxIdSafe(txid)
+      } else {
+        const { txid } = await setItemQuantity({
+          data: { key: op.key, quantity: op.value },
+        })
+        await awaitTxIdSafe(txid)
+        // The displayed amount is server-computed, so pull the fresh snapshot
+        // before the pending overlay is dropped.
+        await queryClient.refetchQueries({
+          queryKey: shoppingQueryOptions().queryKey,
+        })
+      }
+    },
+    [queryClient],
+  )
+  const flush = useCallback(() => void flushOutbox(execute), [execute])
+
+  useEffect(() => {
+    flush()
+    const onOnline = () => flush()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') flush()
+    }
+    window.addEventListener('online', onOnline)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [flush])
+
+  return flush
 }
 
 /** Add/remove mutations for the persisted list — kept on TanStack Query (the
@@ -177,31 +250,9 @@ function useShoppingMutations() {
     mutationFn: () => removeCheckedItems(),
     onSuccess: invalidate,
   })
-  const setQuantity = useMutation({
-    mutationFn: (vars: { key: string; quantity: number | null }) =>
-      setItemQuantity({ data: vars }),
-    onMutate: async ({ key, quantity }) => {
-      await queryClient.cancelQueries({ queryKey: shoppingKey })
-      const previous = queryClient.getQueryData<ShoppingList>(shoppingKey)
-      // Optimistic for both set and clear: we only touch overrideQuantity, and
-      // the displayed amount falls back to the (known) computed `quantity` when
-      // it's null — so clearing reverts instantly, no round-trip needed.
-      if (previous) {
-        queryClient.setQueryData<ShoppingList>(shoppingKey, {
-          ...previous,
-          items: previous.items.map((i) =>
-            i.key === key ? { ...i, overrideQuantity: quantity } : i,
-          ),
-        })
-      }
-      return { previous }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(shoppingKey, ctx.previous)
-    },
-    onSettled: invalidate,
-  })
-  return { add, remove, removeChecked, setQuantity }
+  // Quantity edits go through the offline outbox (durable + flushed on reconnect),
+  // not a query mutation — see RealtimeShoppingList / useShoppingFlush.
+  return { add, remove, removeChecked }
 }
 
 function ShoppingPage() {
@@ -214,7 +265,14 @@ function ShoppingPage() {
   return mounted ? (
     <RealtimeShoppingList list={data} />
   ) : (
-    <ShoppingView list={data} isChecked={(item) => item.checked} onToggle={() => {}} />
+    <ShoppingView
+      list={data}
+      isChecked={(item) => item.checked}
+      onToggle={() => {}}
+      onSetQuantity={() => {}}
+      online
+      pendingCount={0}
+    />
   )
 }
 
@@ -257,41 +315,72 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
     lastSig.current = syncSig
   }, [syncSig, queryClient])
 
+  const online = useOnline()
+  const { pendingChecked, pendingOverride, count } = useOutbox()
+  const flush = useShoppingFlush()
+
   const checkedByKey = new Map((checkRows ?? []).map((r) => [r.item_key, r.checked]))
 
-  const isChecked = (item: ShoppingItem) => checkedByKey.get(item.key) ?? false
+  // The outbox is both the durable queue and the optimistic overlay: a pending
+  // check/override wins over the synced server value until it has flushed.
+  const isChecked = (item: ShoppingItem) =>
+    pendingChecked.has(item.key)
+      ? pendingChecked.get(item.key)!
+      : (checkedByKey.get(item.key) ?? false)
+
+  const overlaidList =
+    pendingOverride.size === 0
+      ? list
+      : {
+          ...list,
+          items: list.items.map((i) =>
+            pendingOverride.has(i.key)
+              ? { ...i, overrideQuantity: pendingOverride.get(i.key)! }
+              : i,
+          ),
+        }
 
   const toggle = (item: ShoppingItem, checked: boolean) => {
-    if (shoppingChecksCollection.has(item.key)) {
-      shoppingChecksCollection.update(item.key, (draft) => {
-        draft.checked = checked
-      })
-    } else {
-      shoppingChecksCollection.insert({
-        user_id: list.scopeId,
-        item_key: item.key,
-        checked,
-        override_quantity: null,
-      })
-    }
+    enqueueOp({ type: 'check', key: item.key, value: checked })
+    flush()
   }
 
-  return <ShoppingView list={list} isChecked={isChecked} onToggle={toggle} />
+  const onSetQuantity = (key: string, quantity: number | null) => {
+    enqueueOp({ type: 'quantity', key, value: quantity })
+    flush()
+  }
+
+  return (
+    <ShoppingView
+      list={overlaidList}
+      isChecked={isChecked}
+      onToggle={toggle}
+      onSetQuantity={onSetQuantity}
+      online={online}
+      pendingCount={count}
+    />
+  )
 }
 
 function ShoppingView({
   list,
   isChecked,
   onToggle,
+  onSetQuantity,
+  online,
+  pendingCount,
 }: {
   list: ShoppingList
   isChecked: (item: ShoppingItem) => boolean
   onToggle: (item: ShoppingItem, checked: boolean) => void
+  onSetQuantity: (key: string, quantity: number | null) => void
+  /** False when the browser is offline — disables actions that need the network. */
+  online: boolean
+  /** Count of queued offline edits awaiting flush. */
+  pendingCount: number
 }) {
   const { recipes, items } = list
-  const { add, remove, removeChecked, setQuantity } = useShoppingMutations()
-  const onSetQuantity = (key: string, quantity: number | null) =>
-    setQuantity.mutate({ key, quantity })
+  const { add, remove, removeChecked } = useShoppingMutations()
   // Pantry staples (salt, oil…) are parked in their own de-emphasized section
   // and kept out of the "to buy" flow entirely — they're things you already
   // have, so they don't clutter the active list or the count.
@@ -341,14 +430,33 @@ function ShoppingView({
           variant="secondary"
           size="sm"
           onPress={() => removeChecked.mutate()}
-          isDisabled={checkedCount === 0 || removeChecked.isPending}
+          isDisabled={checkedCount === 0 || !online || removeChecked.isPending}
         >
           <Trash2 className="h-4 w-4" />
           Fjern avhukede
         </Button>
       </div>
 
-      <AddShoppingItem onAdd={(input) => add.mutate(input)} />
+      {/* Only the offline state gets a banner — it's a real, persistent mode.
+          Online syncing is sub-second and silent; flashing a banner on every
+          toggle just shifts the layout. */}
+      {!online && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>
+            Frakoblet – avhuking og antall lagres og sendes når du er på nett igjen.
+            {pendingCount > 0 && ` (${pendingCount} venter)`}
+          </span>
+        </div>
+      )}
+
+      {online ? (
+        <AddShoppingItem onAdd={(input) => add.mutate(input)} />
+      ) : (
+        <div className="rounded-lg border border-dashed border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-400">
+          Koble til nett for å legge til nye varer.
+        </div>
+      )}
 
       {recipes.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -390,6 +498,7 @@ function ShoppingView({
                     onToggle={onToggle}
                     onRemove={() => remove.mutate(item.key)}
                     onSetQuantity={onSetQuantity}
+                    online={online}
                   />
                 ))}
               </ul>
@@ -409,6 +518,7 @@ function ShoppingView({
                     onToggle={onToggle}
                     onRemove={() => remove.mutate(item.key)}
                     onSetQuantity={onSetQuantity}
+                    online={online}
                   />
                 ))}
               </ul>
@@ -427,6 +537,7 @@ function ShoppingView({
                     onToggle={onToggle}
                     onRemove={() => remove.mutate(item.key)}
                     onSetQuantity={onSetQuantity}
+                    online={online}
                   />
                 ))}
               </ul>
@@ -450,6 +561,7 @@ function ShoppingRow({
   item,
   checked,
   muted = false,
+  online = true,
   onToggle,
   onRemove,
   onSetQuantity,
@@ -458,6 +570,8 @@ function ShoppingRow({
   checked: boolean
   /** De-emphasize the row (used for pantry staples in "Har hjemme"). */
   muted?: boolean
+  /** When offline, removing a line is disabled (it needs the network). */
+  online?: boolean
   onToggle: (item: ShoppingItem, checked: boolean) => void
   onRemove: () => void
   onSetQuantity: (key: string, quantity: number | null) => void
@@ -588,8 +702,10 @@ function ShoppingRow({
       <button
         type="button"
         onClick={onRemove}
+        disabled={!online}
         aria-label={`Fjern ${item.name} fra listen`}
-        className="-m-2 shrink-0 rounded-full p-2 text-stone-300 transition-colors hover:bg-stone-100 hover:text-stone-600"
+        title={online ? undefined : 'Krever nett'}
+        className="-m-2 shrink-0 rounded-full p-2 text-stone-300 transition-colors hover:bg-stone-100 hover:text-stone-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-300"
       >
         <X className="h-4 w-4" />
       </button>
