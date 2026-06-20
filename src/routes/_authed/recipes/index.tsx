@@ -11,9 +11,11 @@ import {
   Plus,
   Search,
   ShoppingCart,
+  SlidersHorizontal,
   Star,
   Users,
   UtensilsCrossed,
+  X,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
@@ -26,13 +28,22 @@ import {
 } from '@/server/shopping'
 
 export const Route = createFileRoute('/_authed/recipes/')({
-  // Keep the search term in the URL (?q=…) so it survives back-navigation from a
-  // recipe and is deep-linkable. The loader doesn't read `q`, so typing only
-  // re-filters client-side — it never re-runs the loader. `q` is optional (and
-  // omitted when empty) so other links to /recipes needn't pass it.
-  validateSearch: (search: Record<string, unknown>): { q?: string } => {
+  // Keep the search term (?q=…) and selected tag filter (?tags=…) in the URL so
+  // they survive back-navigation from a recipe and are deep-linkable. The loader
+  // reads neither, so typing/toggling only re-filters client-side — it never
+  // re-runs the loader. Both are optional (and omitted when empty) so other links
+  // to /recipes needn't pass them.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { q?: string; tags?: string[] } => {
     const q = typeof search.q === 'string' ? search.q : ''
-    return q ? { q } : {}
+    const rawTags = search.tags
+    const tags = (Array.isArray(rawTags) ? rawTags : [rawTags])
+      .filter((t): t is string => typeof t === 'string' && t.length > 0)
+    return {
+      ...(q ? { q } : {}),
+      ...(tags.length ? { tags } : {}),
+    }
   },
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(recipesQueryOptions()),
@@ -47,8 +58,13 @@ function RecipesPage() {
   // straight to the async URL state drops fast keystrokes). The URL `q` only
   // seeds state on mount — including when this route remounts on back-navigation
   // from a recipe — so the term is restored; local state is authoritative after.
-  const { q: initialSearch = '' } = Route.useSearch()
+  const { q: initialSearch = '', tags: initialTags = [] } = Route.useSearch()
   const [search, setSearch] = useState(initialSearch)
+  // Selected tag filter, also URL-seeded on mount and kept in the URL below.
+  const [activeTags, setActiveTags] = useState<string[]>(initialTags)
+  // The tag list is tucked behind a toggle so it never crowds the page; open it
+  // by default when arriving with a filter already applied (e.g. a deep link).
+  const [showFilters, setShowFilters] = useState(initialTags.length > 0)
 
   // Mirror the term into the URL as a direct consequence of editing (no effect).
   // replace-history avoids an entry per keystroke; an empty term drops the param.
@@ -60,27 +76,60 @@ function RecipesPage() {
     })
   }
 
+  // Mirror the active tag set to the URL (?tags=…), dropping the param when empty.
+  const syncTags = (next: string[]) =>
+    void navigate({
+      search: (s) => ({ ...s, tags: next.length ? next : undefined }),
+      replace: true,
+    })
+
+  // Toggle a tag in/out of the active filter and mirror the result to the URL.
+  const onToggleTag = (tag: string) => {
+    setActiveTags((prev) => {
+      const next = prev.includes(tag)
+        ? prev.filter((t) => t !== tag)
+        : [...prev, tag]
+      syncTags(next)
+      return next
+    })
+  }
+
+  const clearTags = () => {
+    setActiveTags([])
+    syncTags([])
+  }
+
   const recipesKey = recipesQueryOptions().queryKey
 
   const onListCount = recipes.filter((r) => r.inShoppingList).length
 
+  // Every tag in use across the household's recipes, deduped and sorted, so the
+  // filter row offers the full vocabulary regardless of the current search.
+  const allTags = useMemo(() => {
+    const seen = new Set<string>()
+    for (const r of recipes) for (const t of r.tags) seen.add(t)
+    return [...seen].sort((a, b) => a.localeCompare(b, 'nb'))
+  }, [recipes])
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    const matched = !term
-      ? recipes
-      : recipes.filter(
-          (r) =>
-            r.title.toLowerCase().includes(term) ||
-            (r.description?.toLowerCase().includes(term) ?? false) ||
-            r.tags.some((t) => t.toLowerCase().includes(term)),
-        )
+    const matched = recipes.filter((r) => {
+      const matchesTerm =
+        !term ||
+        r.title.toLowerCase().includes(term) ||
+        (r.description?.toLowerCase().includes(term) ?? false) ||
+        r.tags.some((t) => t.toLowerCase().includes(term))
+      // A recipe must carry every selected tag (AND) to survive the filter.
+      const matchesTags = activeTags.every((t) => r.tags.includes(t))
+      return matchesTerm && matchesTags
+    })
     // Recipes already on the shopping list float to the top; the sort is stable
     // so the default (rating) order is preserved within each group. Toggling a
     // recipe on/off the list re-sorts it live via the optimistic update.
     return [...matched].sort(
       (a, b) => Number(b.inShoppingList) - Number(a.inShoppingList),
     )
-  }, [recipes, search])
+  }, [recipes, search, activeTags])
 
   const shoppingMutation = useMutation({
     mutationFn: (vars: { id: string; inList: boolean }) =>
@@ -123,15 +172,88 @@ function RecipesPage() {
         <NewRecipeMenu />
       </div>
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-stone-400" />
-        <input
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Søk på tittel, beskrivelse eller etikett…"
-          className="w-full rounded-lg border border-stone-300 bg-white py-2 pr-3 pl-9 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-stone-400" />
+          <input
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Søk på tittel, beskrivelse eller etikett…"
+            className="w-full rounded-lg border border-stone-300 bg-white py-2 pr-3 pl-9 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+          />
+        </div>
+        {allTags.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            aria-expanded={showFilters}
+            className={[
+              'inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+              showFilters || activeTags.length > 0
+                ? 'border-brand-500 bg-brand-50 text-brand-700'
+                : 'border-stone-300 bg-white text-stone-600 hover:bg-stone-50',
+            ].join(' ')}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            Filtrer
+            {activeTags.length > 0 && (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">
+                {activeTags.length}
+              </span>
+            )}
+          </button>
+        )}
       </div>
+
+      {/* The full tag vocabulary lives in this collapsible panel so it never
+          crowds the list. Selected tags below stay visible even when closed. */}
+      {allTags.length > 0 && showFilters && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
+          {allTags.map((tag) => {
+            const active = activeTags.includes(tag)
+            return (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => onToggleTag(tag)}
+                aria-pressed={active}
+                className={[
+                  'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                  active
+                    ? 'bg-brand-600 text-white hover:bg-brand-700'
+                    : 'bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-100',
+                ].join(' ')}
+              >
+                {tag}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {activeTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {activeTags.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => onToggleTag(tag)}
+              className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-3 py-1 text-xs font-medium text-brand-800 hover:bg-brand-200"
+              aria-label={`Fjern filter ${tag}`}
+            >
+              {tag}
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={clearTags}
+            className="text-xs font-medium text-stone-500 underline hover:text-stone-700"
+          >
+            Nullstill
+          </button>
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <EmptyState hasRecipes={recipes.length > 0} />
