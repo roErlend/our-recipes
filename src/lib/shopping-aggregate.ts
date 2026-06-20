@@ -24,6 +24,12 @@ export interface ShoppingItem {
   sources: string[]
   /** Grocery category for grouping, resolved from the ingredient catalog by name. */
   category: string
+  /**
+   * True when the ingredient is flagged as a pantry staple in the catalog
+   * (resolved by name, like {@link category}). Staple lines are de-emphasized
+   * into a "Har hjemme" section and left out of the "to buy" count.
+   */
+  isStaple: boolean
   checked: boolean
 }
 
@@ -66,6 +72,8 @@ export function aggregateShoppingEntries(
   opts: {
     resolveCategory: (name: string) => string
     isChecked: (itemKey: string) => boolean
+    /** Whether the ingredient is a pantry staple. Defaults to never. */
+    isStaple?: (name: string) => boolean
   },
 ): { recipes: { id: string; title: string }[]; items: ShoppingItem[] } {
   const map = new Map<string, ShoppingItem>()
@@ -93,6 +101,7 @@ export function aggregateShoppingEntries(
         hasUnquantified: e.quantity == null,
         sources: e.sourceTitle ? [e.sourceTitle] : [],
         category: opts.resolveCategory(e.name),
+        isStaple: opts.isStaple?.(e.name) ?? false,
         checked: opts.isChecked(e.itemKey),
       })
     }

@@ -15,6 +15,13 @@
       "when": 1781982826225,
       "tag": "0001_right_pet_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781985943457,
+      "tag": "0002_familiar_tigra",
+      "breakpoints": true
     }
   ]
 }

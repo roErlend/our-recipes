@@ -20,6 +20,8 @@ export interface CatalogIngredient {
   category: string
   /** True for the household's own saved ingredients (vs. shared stock). */
   isHousehold: boolean
+  /** A pantry staple the household (almost) always has — kept off the "to buy" list. */
+  isStaple: boolean
 }
 
 /** Lower-cased lookup/dedup key for an ingredient name. */
@@ -62,6 +64,7 @@ export const catalogForScope = createServerOnlyFn(async (householdId: string) =>
       name: ingredientCatalog.name,
       nameKey: ingredientCatalog.nameKey,
       category: ingredientCatalog.category,
+      staple: ingredientCatalog.staple,
     })
     .from(ingredientCatalog)
     .where(
@@ -73,7 +76,7 @@ export const catalogForScope = createServerOnlyFn(async (householdId: string) =>
 
   const byKey = new Map<
     string,
-    { name: string; category: string; isHousehold: boolean }
+    { name: string; category: string; isHousehold: boolean; isStaple: boolean }
   >()
   for (const r of rows) {
     const isHousehold = r.scopeId != null
@@ -84,6 +87,7 @@ export const catalogForScope = createServerOnlyFn(async (householdId: string) =>
         name: r.name,
         category: normalizeCategory(r.category),
         isHousehold,
+        isStaple: r.staple,
       })
     }
   }

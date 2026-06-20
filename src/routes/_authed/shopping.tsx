@@ -122,10 +122,8 @@ function useShoppingMutations() {
       // Show the right category immediately: a known ingredient's catalog
       // category, else the one chosen for the new ingredient, else the default.
       const catalog = queryClient.getQueryData<CatalogIngredient[]>(ingredientsKey)
-      const category =
-        catalog?.find((c) => c.key === name.toLowerCase())?.category ??
-        input.category ??
-        DEFAULT_CATEGORY
+      const catalogHit = catalog?.find((c) => c.key === name.toLowerCase())
+      const category = catalogHit?.category ?? input.category ?? DEFAULT_CATEGORY
 
       if (previous && !previous.items.some((i) => i.key === key)) {
         const optimistic: ShoppingItem = {
@@ -137,6 +135,7 @@ function useShoppingMutations() {
           hasUnquantified: true,
           sources: [],
           category,
+          isStaple: catalogHit?.isStaple ?? false,
           checked: false,
         }
         queryClient.setQueryData<ShoppingList>(shoppingKey, {
@@ -293,13 +292,24 @@ function ShoppingView({
   const { add, remove, removeChecked, setQuantity } = useShoppingMutations()
   const onSetQuantity = (key: string, quantity: number | null) =>
     setQuantity.mutate({ key, quantity })
+  // Pantry staples (salt, oil…) are parked in their own de-emphasized section
+  // and kept out of the "to buy" flow entirely — they're things you already
+  // have, so they don't clutter the active list or the count.
+  const staples = items
+    .filter((i) => i.isStaple)
+    .sort(
+      (a, b) =>
+        categoryRank(a.category) - categoryRank(b.category) ||
+        a.name.localeCompare(b.name, 'nb'),
+    )
+  const buyable = items.filter((i) => !i.isStaple)
   // Unchecked items are grouped under category headers; checked items all drop
   // to a single section at the very bottom (ordered by category, then name).
   const uncheckedGroups = groupItems(
-    items.filter((i) => !isChecked(i)),
+    buyable.filter((i) => !isChecked(i)),
     isChecked,
   )
-  const checkedItems = items
+  const checkedItems = buyable
     .filter((i) => isChecked(i))
     .sort(
       (a, b) =>
@@ -307,7 +317,7 @@ function ShoppingView({
         a.name.localeCompare(b.name, 'nb'),
     )
   const checkedCount = checkedItems.length
-  const remaining = items.length - checkedCount
+  const remaining = buyable.length - checkedCount
   // Only label category sections when there's more than one.
   const showHeaders = uncheckedGroups.length > 1
 
@@ -386,6 +396,25 @@ function ShoppingView({
             </section>
           ))}
 
+          {staples.length > 0 && (
+            <section>
+              <SectionHeader>Har hjemme ({staples.length})</SectionHeader>
+              <ul>
+                {staples.map((item) => (
+                  <ShoppingRow
+                    key={item.key}
+                    item={item}
+                    checked={isChecked(item)}
+                    muted
+                    onToggle={onToggle}
+                    onRemove={() => remove.mutate(item.key)}
+                    onSetQuantity={onSetQuantity}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+
           {checkedItems.length > 0 && (
             <section>
               <SectionHeader>Avhuket ({checkedCount})</SectionHeader>
@@ -420,12 +449,15 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
 function ShoppingRow({
   item,
   checked,
+  muted = false,
   onToggle,
   onRemove,
   onSetQuantity,
 }: {
   item: ShoppingItem
   checked: boolean
+  /** De-emphasize the row (used for pantry staples in "Har hjemme"). */
+  muted?: boolean
   onToggle: (item: ShoppingItem, checked: boolean) => void
   onRemove: () => void
   onSetQuantity: (key: string, quantity: number | null) => void
@@ -480,7 +512,11 @@ function ShoppingRow({
       <div className="min-w-0 flex-1">
         <span
           className={
-            checked ? 'text-stone-400 line-through' : 'font-medium text-stone-900'
+            checked
+              ? 'text-stone-400 line-through'
+              : muted
+                ? 'text-stone-400'
+                : 'font-medium text-stone-900'
           }
         >
           {item.name}

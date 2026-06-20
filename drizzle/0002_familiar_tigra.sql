@@ -1,0 +1,1 @@
+ALTER TABLE "ingredient_catalog" ADD COLUMN "staple" boolean DEFAULT false NOT NULL;

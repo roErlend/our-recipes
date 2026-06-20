@@ -136,6 +136,32 @@ describe('aggregateShoppingEntries', () => {
     expect(items[0].checked).toBe(true)
   })
 
+  it('defaults isStaple to false when no resolver is supplied', () => {
+    const { items } = aggregateShoppingEntries(
+      [entry({ itemKey: 'flour', name: 'Mel', quantity: 1 })],
+      { resolveCategory: cat, isChecked: noChecks },
+    )
+
+    expect(items[0].isStaple).toBe(false)
+  })
+
+  it('resolves isStaple by name from the injected callback', () => {
+    const { items } = aggregateShoppingEntries(
+      [
+        entry({ itemKey: 'salt', name: 'Salt', quantity: 1 }),
+        entry({ itemKey: 'flour', name: 'Mel', quantity: 1 }),
+      ],
+      {
+        resolveCategory: cat,
+        isChecked: noChecks,
+        isStaple: (name) => name === 'Salt',
+      },
+    )
+
+    const byName = Object.fromEntries(items.map((i) => [i.name, i.isStaple]))
+    expect(byName).toEqual({ Salt: true, Mel: false })
+  })
+
   it('trims the item name from the first contribution', () => {
     const { items } = aggregateShoppingEntries(
       [entry({ itemKey: 'flour', name: '  Mel  ', quantity: 1 })],

@@ -85,6 +85,7 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
     const { recipes, items } = aggregateShoppingEntries(entries, {
       resolveCategory: (name) =>
         catalog.get(nameKey(name))?.category ?? DEFAULT_CATEGORY,
+      isStaple: (name) => catalog.get(nameKey(name))?.isStaple ?? false,
       isChecked: (key) => checkedByKey.get(key) ?? false,
     })
 

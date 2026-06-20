@@ -334,6 +334,13 @@ export const ingredientCatalog = pgTable(
     nameKey: text('name_key').notNull(),
     /** Grocery category for shopping-list grouping; see `src/lib/categories.ts`. */
     category: text('category').notNull().default('Annet'),
+    /**
+     * A pantry staple you (almost) always have — salt, oil, flour. Resolved by
+     * name onto the generated shopping list (like {@link category}), where staple
+     * lines are de-emphasized into a "Har hjemme" section and left out of the
+     * "to buy" count, so they don't have to be deleted from every list.
+     */
+    staple: boolean('staple').notNull().default(false),
     createdAt: timestamp('created_at')
       .$defaultFn(() => new Date())
       .notNull(),

@@ -5,7 +5,16 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { Check, Pencil, Plus, Search, Shield, Trash2, X } from 'lucide-react'
+import {
+  Check,
+  Home,
+  Pencil,
+  Plus,
+  Search,
+  Shield,
+  Trash2,
+  X,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { ComboBox } from '@/components/ui/ComboBox'
@@ -291,8 +300,12 @@ function IngredientsSection({
     onSuccess: invalidate,
   })
   const update = useMutation({
-    mutationFn: (vars: { id: string; name: string; category: string }) =>
-      adminUpdateIngredient({ data: vars }),
+    mutationFn: (vars: {
+      id: string
+      name: string
+      category: string
+      staple: boolean
+    }) => adminUpdateIngredient({ data: vars }),
     onSuccess: invalidate,
   })
   const remove = useMutation({
@@ -346,8 +359,8 @@ function IngredientsSection({
               key={ingredient.id}
               ingredient={ingredient}
               categories={categories}
-              onSave={(name, category) =>
-                update.mutate({ id: ingredient.id, name, category })
+              onSave={(name, category, staple) =>
+                update.mutate({ id: ingredient.id, name, category, staple })
               }
               onDelete={() => remove.mutate(ingredient.id)}
               busy={update.isPending || remove.isPending}
@@ -423,15 +436,18 @@ function IngredientRow({
 }: {
   ingredient: AdminIngredient
   categories: string[]
-  onSave: (name: string, category: string) => void
+  onSave: (name: string, category: string, staple: boolean) => void
   onDelete: () => void
   busy: boolean
 }) {
   const [name, setName] = useState(ingredient.name)
   const [category, setCategory] = useState(ingredient.category)
+  const [staple, setStaple] = useState(ingredient.staple)
 
   const dirty =
-    name.trim() !== ingredient.name || category.trim() !== ingredient.category
+    name.trim() !== ingredient.name ||
+    category.trim() !== ingredient.category ||
+    staple !== ingredient.staple
   const canSave = dirty && name.trim() !== '' && category.trim() !== ''
 
   return (
@@ -452,6 +468,20 @@ function IngredientRow({
           aria-label={`Kategori for ${ingredient.name}`}
           className="min-w-0 flex-1 sm:w-44 sm:flex-none"
         />
+        <button
+          type="button"
+          onClick={() => setStaple((s) => !s)}
+          aria-label={`Fast vare (har alltid hjemme): ${ingredient.name}`}
+          aria-pressed={staple}
+          title="Fast vare – holdes utenfor handlelisten"
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
+            staple
+              ? 'bg-brand-100 text-brand-700 hover:bg-brand-200'
+              : 'text-stone-300 hover:bg-stone-100 hover:text-stone-600'
+          }`}
+        >
+          <Home className="h-4 w-4" />
+        </button>
         {ingredient.isStock ? (
           <span className="shrink-0 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
             standard
@@ -463,7 +493,7 @@ function IngredientRow({
         )}
         <IconButton
           label={`Lagre ${ingredient.name}`}
-          onClick={() => onSave(name.trim(), category.trim())}
+          onClick={() => onSave(name.trim(), category.trim(), staple)}
           disabled={!canSave || busy}
           tone="brand"
         >

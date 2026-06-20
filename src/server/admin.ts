@@ -18,6 +18,8 @@ export interface AdminIngredient {
   category: string
   /** True for shared stock (scope_id NULL); false for a household-owned row. */
   isStock: boolean
+  /** Pantry staple — kept off the "to buy" shopping list. */
+  staple: boolean
 }
 
 /** Every ingredient in the catalog (stock + all households), for cleanup. */
@@ -31,6 +33,7 @@ export const adminListIngredients = createServerFn({ method: 'GET' }).handler(
         name: r.name,
         category: normalizeCategory(r.category),
         isStock: r.scopeId == null,
+        staple: r.staple,
       }))
       .sort(
         (a, b) =>
@@ -74,16 +77,18 @@ export const adminCreateIngredient = createServerFn({ method: 'POST' })
     return { name }
   })
 
-/** Rename and/or recategorize a single catalog ingredient. */
+/** Rename and/or recategorize a single catalog ingredient, and set its staple flag. */
 export const adminUpdateIngredient = createServerFn({ method: 'POST' })
-  .validator((input: { id: string; name: string; category: string }) =>
-    z
-      .object({
-        id: z.string().min(1),
-        name: z.string().trim().min(1, 'Navn kreves').max(200),
-        category: z.string().trim().min(1).max(60),
-      })
-      .parse(input),
+  .validator(
+    (input: { id: string; name: string; category: string; staple?: boolean }) =>
+      z
+        .object({
+          id: z.string().min(1),
+          name: z.string().trim().min(1, 'Navn kreves').max(200),
+          category: z.string().trim().min(1).max(60),
+          staple: z.boolean().optional(),
+        })
+        .parse(input),
   )
   .handler(async ({ data }) => {
     await requireAdmin()
@@ -92,7 +97,12 @@ export const adminUpdateIngredient = createServerFn({ method: 'POST' })
     await db.transaction(async (tx) => {
       await tx
         .update(ingredientCatalog)
-        .set({ name, nameKey: nameKey(name), category })
+        .set({
+          name,
+          nameKey: nameKey(name),
+          category,
+          ...(data.staple === undefined ? {} : { staple: data.staple }),
+        })
         .where(eq(ingredientCatalog.id, data.id))
       await ensureCategoryRow(tx, category)
     })
