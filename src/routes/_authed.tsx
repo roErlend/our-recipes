@@ -52,8 +52,8 @@ const navLinkClass = [
 const activeNavLinkClass = 'bg-white text-brand-700 shadow-sm hover:bg-white'
 
 const NAV = [
-  { to: '/recipes', label: 'Oppskrifter', icon: ChefHat, activeOptions: { exact: false } },
   { to: '/shopping', label: 'Handleliste', icon: ListChecks, activeOptions: undefined },
+  { to: '/recipes', label: 'Oppskrifter', icon: ChefHat, activeOptions: { exact: false } },
   { to: '/deling', label: 'Deling', icon: UserPlus, activeOptions: undefined },
 ] as const
 
