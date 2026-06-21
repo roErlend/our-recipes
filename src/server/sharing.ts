@@ -61,7 +61,7 @@ export const getPendingInvites = createServerFn({ method: 'GET' }).handler(
 export interface SharingOverview {
   me: string
   /** Other people in my household (we share everything). */
-  householdMembers: { name: string; email: string }[]
+  householdMembers: { id: string; name: string; email: string }[]
   /** Emails I've invited that haven't responded yet. */
   sentInvites: string[]
   /** Invites waiting for my response. */
@@ -74,7 +74,7 @@ export const getSharing = createServerFn({ method: 'GET' }).handler(
     const { householdId } = await accessibleScope(user.id)
 
     const members = await db
-      .select({ name: userTable.name, email: userTable.email })
+      .select({ id: userTable.id, name: userTable.name, email: userTable.email })
       .from(householdMember)
       .innerJoin(userTable, eq(userTable.id, householdMember.userId))
       .where(
@@ -192,3 +192,27 @@ export const leaveHousehold = createServerFn({ method: 'POST' }).handler(
     return { ok: true }
   },
 )
+
+/**
+ * Remove one other person from my household; everyone else stays. The removed
+ * member reverts to their own private collection (same effect as them leaving).
+ * Scoped to my household, so I can only remove people I actually share with.
+ */
+export const removeHouseholdMember = createServerFn({ method: 'POST' })
+  .validator((userId: unknown) => z.string().min(1).parse(userId))
+  .handler(async ({ data: targetUserId }) => {
+    const user = await requireUser()
+    if (targetUserId === user.id) {
+      throw new Error('Bruk «Slutt å dele» for å forlate husholdningen selv')
+    }
+    const { householdId } = await accessibleScope(user.id)
+    await db
+      .delete(householdMember)
+      .where(
+        and(
+          eq(householdMember.userId, targetUserId),
+          eq(householdMember.householdId, householdId),
+        ),
+      )
+    return { ok: true }
+  })

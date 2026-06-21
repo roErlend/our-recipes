@@ -21,6 +21,7 @@ import {
   cancelInvite,
   declineInvite,
   leaveHousehold,
+  removeHouseholdMember,
   sendInvite,
 } from '@/server/sharing'
 
@@ -35,6 +36,10 @@ function SharingPage() {
   const { data } = useSuspenseQuery(sharingQueryOptions())
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Two-click confirm before anyone leaves the household. `confirmingRemove`
+  // holds the member id mid-confirm; `confirmingLeave` is for leaving myself.
+  const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null)
+  const [confirmingLeave, setConfirmingLeave] = useState(false)
 
   const sharingKey = sharingQueryOptions().queryKey
   const invalidateSharing = () =>
@@ -70,7 +75,17 @@ function SharingPage() {
   })
   const leave = useMutation({
     mutationFn: () => leaveHousehold(),
-    onSuccess: invalidateAll,
+    onSuccess: () => {
+      setConfirmingLeave(false)
+      invalidateAll()
+    },
+  })
+  const remove = useMutation({
+    mutationFn: (userId: string) => removeHouseholdMember({ data: userId }),
+    onSuccess: () => {
+      setConfirmingRemove(null)
+      invalidateAll()
+    },
   })
 
   return (
@@ -124,31 +139,96 @@ function SharingPage() {
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {data.householdMembers.map((m) => (
-              <li
-                key={m.email}
-                className="flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"
-              >
-                <span className="flex-1">
-                  <span className="font-medium text-stone-900">{m.name}</span>{' '}
-                  <span className="text-stone-400">{m.email}</span>
-                </span>
-              </li>
-            ))}
+            {data.householdMembers.map((m) => {
+              const confirming = confirmingRemove === m.id
+              return (
+                <li
+                  key={m.id}
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"
+                >
+                  <span className="flex-1">
+                    <span className="font-medium text-stone-900">{m.name}</span>{' '}
+                    <span className="text-stone-400">{m.email}</span>
+                  </span>
+                  {confirming ? (
+                    <>
+                      <span className="text-stone-600">
+                        Slutte å dele med {m.name}?
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        isDisabled={remove.isPending}
+                        onPress={() => remove.mutate(m.id)}
+                      >
+                        {remove.isPending ? 'Fjerner…' : 'Bekreft'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        isDisabled={remove.isPending}
+                        onPress={() => setConfirmingRemove(null)}
+                      >
+                        Avbryt
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-600"
+                      aria-label={`Slutt å dele med ${m.name}`}
+                      onPress={() => {
+                        setConfirmingLeave(false)
+                        setConfirmingRemove(m.id)
+                      }}
+                    >
+                      <UserMinus className="h-4 w-4" />
+                      Fjern
+                    </Button>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
-        {data.householdMembers.length > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-start text-red-600"
-            isDisabled={leave.isPending}
-            onPress={() => leave.mutate()}
-          >
-            <UserMinus className="h-4 w-4" />
-            Slutt å dele
-          </Button>
-        )}
+        {data.householdMembers.length > 0 &&
+          (confirmingLeave ? (
+            <div className="flex flex-wrap items-center gap-2 self-start text-sm">
+              <span className="text-stone-600">
+                Forlate husholdningen? Du slutter å dele med alle.
+              </span>
+              <Button
+                size="sm"
+                variant="danger"
+                isDisabled={leave.isPending}
+                onPress={() => leave.mutate()}
+              >
+                {leave.isPending ? 'Forlater…' : 'Bekreft'}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                isDisabled={leave.isPending}
+                onPress={() => setConfirmingLeave(false)}
+              >
+                Avbryt
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-start text-red-600"
+              onPress={() => {
+                setConfirmingRemove(null)
+                setConfirmingLeave(true)
+              }}
+            >
+              <UserMinus className="h-4 w-4" />
+              Slutt å dele
+            </Button>
+          ))}
       </Section>
 
       {/* Invite someone */}
