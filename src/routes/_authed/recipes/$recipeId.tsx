@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 
 import { AddToShoppingMenu } from '@/components/AddToShoppingMenu'
+import { ServingsStepper } from '@/components/ServingsStepper'
 import { Button } from '@/components/ui/Button'
 import { StarRating } from '@/components/StarRating'
 import {
@@ -214,11 +215,7 @@ function RecipeDetailPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           {recipe.ingredients.length > 0 ? (
-            <AddToShoppingMenu
-              recipe={recipe}
-              servings={servings}
-              onServingsChange={setServings}
-            />
+            <AddToShoppingMenu recipe={recipe} servings={servings} />
           ) : null}
           {!recipe.isOwner && recipe.ownerName && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
@@ -226,11 +223,12 @@ function RecipeDetailPage() {
               Delt av {recipe.ownerName}
             </span>
           )}
-          {recipe.servings != null && (
-            <span className="inline-flex items-center gap-1.5 text-sm text-stone-600">
-              <Users className="h-4 w-4 text-stone-400" />
-              {recipe.servings} porsjoner
-            </span>
+          {baseServings != null && (
+            <ServingsStepper
+              baseServings={baseServings}
+              servings={servings}
+              onServingsChange={setServings}
+            />
           )}
           {recipe.sourceUrl && (
             <a
