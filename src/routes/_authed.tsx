@@ -46,8 +46,10 @@ export const Route = createFileRoute('/_authed')({
 })
 
 const navLinkClass = [
-  'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-stone-600 transition-colors',
+  'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-stone-600 transition',
   'hover:bg-stone-200/60 hover:text-stone-900',
+  // Tactile press feedback (works on tap/click for the anchor Link).
+  'active:scale-95 active:bg-stone-300/70',
 ].join(' ')
 
 const activeNavLinkClass = 'bg-white text-brand-700 shadow-sm hover:bg-white'
@@ -135,7 +137,7 @@ function AuthedLayout() {
       >
         {nav.map(({ to, label, icon: Icon, activeOptions }) => {
           const tab =
-            'flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium'
+            'flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-transform active:scale-90 active:text-brand-700'
           return (
             <Link
               key={to}
