@@ -71,6 +71,19 @@ function RecipeDetailPage() {
   const { data: recipe } = useSuspenseQuery(recipeQueryOptions(recipeId))
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
+  // Target portion count, shared between the "add to list" stepper and the
+  // ingredient amounts below so they scale together. Seeded to the recipe's base
+  // and re-seeded when navigating to a different recipe (the route component is
+  // reused across param changes, so state would otherwise carry over).
+  const baseServings = recipe?.servings ?? null
+  const [servings, setServings] = useState(baseServings ?? 1)
+  const [seededFor, setSeededFor] = useState(recipeId)
+  if (seededFor !== recipeId) {
+    setSeededFor(recipeId)
+    setServings(baseServings ?? 1)
+  }
+  const scale = baseServings != null ? servings / baseServings : 1
+
   const recipeKey = recipeQueryOptions(recipeId).queryKey
 
   const ratingMutation = useMutation({
@@ -201,7 +214,11 @@ function RecipeDetailPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           {recipe.ingredients.length > 0 ? (
-            <AddToShoppingMenu recipe={recipe} />
+            <AddToShoppingMenu
+              recipe={recipe}
+              servings={servings}
+              onServingsChange={setServings}
+            />
           ) : null}
           {!recipe.isOwner && recipe.ownerName && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
@@ -271,8 +288,13 @@ function RecipeDetailPage() {
       >
         {recipe.ingredients.length > 0 && (
           <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-3 text-lg font-semibold text-stone-900">
+            <h2 className="mb-3 flex flex-wrap items-baseline gap-x-2 text-lg font-semibold text-stone-900">
               Ingredienser
+              {scale !== 1 && (
+                <span className="text-sm font-normal text-stone-400">
+                  for {servings} porsjoner
+                </span>
+              )}
             </h2>
             <div className="flex flex-col gap-4">
               {groupByComponent(recipe.ingredients).map((group) => (
@@ -284,7 +306,10 @@ function RecipeDetailPage() {
                   )}
                   <ul className="flex flex-col gap-2">
                     {group.items.map((ing) => {
-                      const amount = formatQuantity(ing.quantity, ing.unit)
+                      const amount = formatQuantity(
+                        ing.quantity == null ? null : ing.quantity * scale,
+                        ing.unit,
+                      )
                       return (
                         <li
                           key={ing.id}

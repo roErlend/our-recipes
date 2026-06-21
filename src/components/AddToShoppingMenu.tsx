@@ -11,7 +11,14 @@ import {
   Popover,
 } from 'react-aria-components'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronDown, ListChecks, ShoppingCart } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ListChecks,
+  Minus,
+  Plus,
+  ShoppingCart,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -74,16 +81,33 @@ function formatAmount(quantity: number | null, unit: string | null) {
  * opens a picker to add only some of the ingredients — useful when you already
  * have a few at home. Owns the shopping mutation + optimistic toggle.
  */
-export function AddToShoppingMenu({ recipe }: { recipe: RecipeDetail }) {
+export function AddToShoppingMenu({
+  recipe,
+  servings,
+  onServingsChange,
+}: {
+  recipe: RecipeDetail
+  /** Target portion count for scaling, owned by the page so the ingredient list
+   *  scales in lockstep. Only meaningful when the recipe declares a base count. */
+  servings: number
+  onServingsChange: (n: number) => void
+}) {
   const queryClient = useQueryClient()
   const [picking, setPicking] = useState(false)
   const recipeKey = recipeQueryOptions(recipe.id).queryKey
+
+  const baseServings = recipe.servings
+  const scaled = baseServings != null && servings !== baseServings
 
   const mutation = useMutation({
     mutationFn: (vars: { inList: boolean; itemKeys?: string[] }) =>
       vars.inList
         ? addRecipeToShopping({
-            data: { recipeId: recipe.id, itemKeys: vars.itemKeys ?? null },
+            data: {
+              recipeId: recipe.id,
+              itemKeys: vars.itemKeys ?? null,
+              servings: baseServings != null ? servings : null,
+            },
           })
         : removeRecipeFromShopping({ data: { recipeId: recipe.id } }),
     onMutate: async (vars) => {
@@ -115,7 +139,40 @@ export function AddToShoppingMenu({ recipe }: { recipe: RecipeDetail }) {
     : 'bg-brand-600 text-white border-l border-white/25 data-[hovered]:bg-brand-700 data-[pressed]:bg-brand-800'
 
   return (
-    <>
+    <div className="flex flex-col gap-2">
+      {baseServings != null && (
+        <div className="flex items-center gap-2 text-sm text-stone-600">
+          <span>Porsjoner</span>
+          <div className="inline-flex items-center rounded-lg border border-stone-300 bg-white">
+            <button
+              type="button"
+              aria-label="Færre porsjoner"
+              onClick={() => onServingsChange(Math.max(1, servings - 1))}
+              disabled={servings <= 1}
+              className="flex h-8 w-8 items-center justify-center rounded-l-lg text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-300"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <span className="w-8 text-center font-medium tabular-nums text-stone-900">
+              {servings}
+            </span>
+            <button
+              type="button"
+              aria-label="Flere porsjoner"
+              onClick={() => onServingsChange(Math.min(100, servings + 1))}
+              disabled={servings >= 100}
+              className="flex h-8 w-8 items-center justify-center rounded-r-lg text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-300"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+          {scaled && (
+            <span className="text-xs text-stone-400">
+              skalert fra {baseServings}
+            </span>
+          )}
+        </div>
+      )}
       <div className="inline-flex items-stretch">
         <Button
           variant={onList ? 'secondary' : 'primary'}
@@ -163,12 +220,13 @@ export function AddToShoppingMenu({ recipe }: { recipe: RecipeDetail }) {
         isOpen={picking}
         onOpenChange={setPicking}
         ingredients={recipe.ingredients}
+        scale={baseServings != null ? servings / baseServings : 1}
         onConfirm={(itemKeys) => {
           mutation.mutate({ inList: true, itemKeys })
           setPicking(false)
         }}
       />
-    </>
+    </div>
   )
 }
 
@@ -179,11 +237,15 @@ function ShoppingItemPicker({
   isOpen,
   onOpenChange,
   ingredients,
+  scale,
   onConfirm,
 }: {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   ingredients: RecipeDetail['ingredients']
+  /** Multiplier applied to displayed amounts so the picker matches what gets
+   *  added at the chosen servings. */
+  scale: number
   onConfirm: (itemKeys: string[]) => void
 }) {
   const lines = useMemo(() => mergeForPicking(ingredients), [ingredients])
@@ -265,7 +327,10 @@ function ShoppingItemPicker({
                 )}
                 <ul className="flex flex-col gap-2">
                   {group.items.map((line) => {
-                    const amount = formatAmount(line.quantity, line.unit)
+                    const amount = formatAmount(
+                      line.quantity == null ? null : line.quantity * scale,
+                      line.unit,
+                    )
                     return (
                       <li key={line.key}>
                         <Checkbox

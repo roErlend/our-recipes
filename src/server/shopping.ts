@@ -107,15 +107,24 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
 /** Add a recipe's ingredients to the list. Idempotent: re-adding replaces that
  *  recipe's previous contributions (so it tracks the recipe's current content).
  *  When `itemKeys` is given, only those lines are added — letting the caller
- *  exclude ingredients they already have; omit/`null` adds every ingredient. */
+ *  exclude ingredients they already have; omit/`null` adds every ingredient.
+ *  When `servings` is given and the recipe has a base serving count, quantities
+ *  are scaled by `servings / recipe.servings` (e.g. cook for 4 from a recipe of
+ *  2 → ×2). Unquantified ingredients ("salt etter smak") are left as-is. */
 export const addRecipeToShopping = createServerFn({ method: 'POST' })
-  .validator((input: { recipeId: string; itemKeys?: string[] | null }) =>
-    z
-      .object({
-        recipeId: z.string().min(1),
-        itemKeys: z.array(z.string().min(1)).nullable().optional(),
-      })
-      .parse(input),
+  .validator(
+    (input: {
+      recipeId: string
+      itemKeys?: string[] | null
+      servings?: number | null
+    }) =>
+      z
+        .object({
+          recipeId: z.string().min(1),
+          itemKeys: z.array(z.string().min(1)).nullable().optional(),
+          servings: z.number().int().positive().max(100).nullable().optional(),
+        })
+        .parse(input),
   )
   .handler(async ({ data }) => {
     const user = await requireUser()
@@ -126,6 +135,14 @@ export const addRecipeToShopping = createServerFn({ method: 'POST' })
       with: { ingredients: true },
     })
     if (!r || !ownerIds.includes(r.ownerId)) throw new Error('FORBIDDEN')
+
+    // Scale factor from the requested servings vs the recipe's base. Only scales
+    // when both are known and positive; otherwise everything stays 1:1.
+    const factor =
+      data.servings != null && r.servings != null && r.servings > 0
+        ? data.servings / r.servings
+        : 1
+    const scale = (q: number) => Math.round(q * factor * 100) / 100
 
     // Merge this recipe's own duplicate ingredients (e.g. garlic twice) into one
     // entry per item key before inserting.
@@ -152,11 +169,16 @@ export const addRecipeToShopping = createServerFn({ method: 'POST' })
     }
 
     // Restrict to the chosen lines when a selection is given (the picker passes
-    // the item keys to keep); no selection means the whole recipe.
+    // the item keys to keep); no selection means the whole recipe. Quantities
+    // are scaled last, once per merged line, to avoid compounding rounding.
     const selected = data.itemKeys ? new Set(data.itemKeys) : null
-    const rows = [...byKey.values()].filter(
-      (row) => !selected || selected.has(row.itemKey),
-    )
+    const rows = [...byKey.values()]
+      .filter((row) => !selected || selected.has(row.itemKey))
+      .map((row) =>
+        factor !== 1 && row.quantity != null
+          ? { ...row, quantity: scale(row.quantity) }
+          : row,
+      )
 
     await db.transaction(async (tx) => {
       await tx

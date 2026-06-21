@@ -5,6 +5,8 @@ Things worth doing next, captured so they're not lost. Effort is rough
 grouping. Update status as these get picked up.
 
 ## Done this session (for context)
+- ✅ Recipe scaling by servings — add at "×N porsjoner" in `AddToShoppingMenu`; server scales quantities by `servings / recipe.servings` into `shopping_entry` (chosen N not persisted).
+- ✅ Tag filtering + sort on the recipe overview (collapsible tag chips; rating/newest/A–Å), plus a one-off keyword tagger (`scripts/auto-tag-recipes.mjs`).
 - ✅ Editable shopping quantities — override + stepper + Electric sync (optimistic).
 - ✅ Admin mobile layout fixes + React Aria ComboBox (replaced the PWA-broken `<datalist>`).
 - ✅ Recipe-from-JSON import — `recipe-url-to-json` skill + segmented "Ny oppskrift" menu → pre-filled review form (subscription-friendly path).
@@ -38,11 +40,6 @@ recipe, and the form pre-fills. Needs an `ANTHROPIC_API_KEY` (server-side) and
 pay-as-you-go billing — cost is cents/month at this volume. The
 `parseRecipeImport` + pre-fill plumbing already exists; this just swaps the
 "paste JSON" step for "paste URL → server extracts".
-
-### Recipe scaling by servings — M
-`recipe.servings` exists in the schema but isn't used. Let a recipe be added to
-the list at "×N servings" and scale its quantities into `shopping_entry`.
-Natural follow-on to the quantity work.
 
 ### Pantry / staples — M
 Flag catalog ingredients you always have (salt, oil, flour) so they're
