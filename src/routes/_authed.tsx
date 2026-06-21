@@ -22,6 +22,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { isAdminEmail } from '@/lib/admin'
 import { signOut } from '@/lib/auth-client'
+import { useSwipeBack } from '@/lib/useSwipeBack'
 import {
   pendingInvitesQueryOptions,
   recipesQueryOptions,
@@ -60,6 +61,7 @@ const NAV = [
 function AuthedLayout() {
   const { user } = Route.useRouteContext()
   const router = useRouter()
+  useSwipeBack()
 
   const nav = isAdminEmail(user.email)
     ? [
