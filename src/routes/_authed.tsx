@@ -84,7 +84,7 @@ function AuthedLayout() {
       <header className="sticky top-0 z-10 border-b border-stone-200 bg-stone-100/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3">
           <Link
-            to="/recipes"
+            to="/shopping"
             className="inline-flex min-w-0 items-center gap-2 text-lg font-bold text-stone-900"
           >
             <UtensilsCrossed className="h-5 w-5 shrink-0 text-brand-600" />
