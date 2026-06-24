@@ -15,6 +15,7 @@ import {
   imageFileFromDataTransfer,
   resizeImageToDataUrl,
 } from '@/lib/image'
+import { MEAL_TAGS } from '@/lib/tags'
 
 export interface RecipeFormIngredient {
   name: string
@@ -281,11 +282,14 @@ export function RecipeForm({
     })
   }
 
-  function commitTag() {
-    const tag = tagDraft.trim().replace(/,$/, '').trim()
+  function addTag(tag: string) {
     if (tag && !values.tags.includes(tag)) {
       set('tags', [...values.tags, tag])
     }
+  }
+
+  function commitTag() {
+    addTag(tagDraft.trim().replace(/,$/, '').trim())
     setTagDraft('')
   }
 
@@ -386,6 +390,22 @@ export function RecipeForm({
             className="min-w-[8rem] flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           />
         </div>
+        {MEAL_TAGS.some((t) => !values.tags.includes(t)) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-stone-400">Vanlige:</span>
+            {MEAL_TAGS.filter((t) => !values.tags.includes(t)).map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => addTag(tag)}
+                className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-sm font-medium capitalize text-brand-700 ring-1 ring-brand-300 transition-colors hover:bg-brand-50"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {tag}
+              </button>
+            ))}
+          </div>
+        )}
       </Section>
 
       <Section

@@ -20,6 +20,7 @@ import {
 
 import { Button } from '@/components/ui/Button'
 import { NewRecipeMenu } from '@/components/NewRecipeMenu'
+import { MEAL_TAGS, isMealTag } from '@/lib/tags'
 import { recipesQueryOptions, shoppingQueryOptions } from '@/lib/queries'
 import { type RecipeListItem } from '@/server/recipes'
 import {
@@ -151,6 +152,14 @@ function RecipesPage() {
     return [...seen].sort((a, b) => a.localeCompare(b, 'nb'))
   }, [recipes])
 
+  // The default meal-type tags get their own prominent section in the filter;
+  // everything else follows below. Meal tags keep their canonical order.
+  const mealTags = useMemo(
+    () => MEAL_TAGS.filter((t) => allTags.includes(t)),
+    [allTags],
+  )
+  const otherTags = useMemo(() => allTags.filter((t) => !isMealTag(t)), [allTags])
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     const matched = recipes.filter((r) => {
@@ -262,26 +271,59 @@ function RecipesPage() {
       {/* The full tag vocabulary lives in this collapsible panel so it never
           crowds the list. Selected tags below stay visible even when closed. */}
       {allTags.length > 0 && showFilters && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
-          {allTags.map((tag) => {
-            const active = activeTags.includes(tag)
-            return (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => onToggleTag(tag)}
-                aria-pressed={active}
-                className={[
-                  'rounded-full px-3 py-1 text-xs font-medium transition-colors',
-                  active
-                    ? 'bg-brand-600 text-white hover:bg-brand-700'
-                    : 'bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-100',
-                ].join(' ')}
-              >
-                {tag}
-              </button>
-            )
-          })}
+        <div className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
+          {mealTags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-stone-400">
+                Måltid
+              </span>
+              {mealTags.map((tag) => {
+                const active = activeTags.includes(tag)
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => onToggleTag(tag)}
+                    aria-pressed={active}
+                    className={[
+                      'rounded-full px-4 py-1.5 text-sm font-semibold capitalize transition-colors',
+                      active
+                        ? 'bg-brand-600 text-white hover:bg-brand-700'
+                        : 'bg-white text-brand-700 ring-1 ring-brand-300 hover:bg-brand-50',
+                    ].join(' ')}
+                  >
+                    {tag}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {mealTags.length > 0 && otherTags.length > 0 && (
+            <hr className="border-stone-200" />
+          )}
+          {otherTags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {otherTags.map((tag) => {
+                const active = activeTags.includes(tag)
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => onToggleTag(tag)}
+                    aria-pressed={active}
+                    className={[
+                      'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                      active
+                        ? 'bg-brand-600 text-white hover:bg-brand-700'
+                        : 'bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-100',
+                    ].join(' ')}
+                  >
+                    {tag}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
