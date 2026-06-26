@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 
 import { AddToShoppingMenu } from '@/components/AddToShoppingMenu'
+import { InstructionsSection } from '@/components/InstructionsSection'
 import { ServingsStepper } from '@/components/ServingsStepper'
 import { Button } from '@/components/ui/Button'
 import { StarRating } from '@/components/StarRating'
@@ -333,14 +334,7 @@ function RecipeDetailPage() {
         )}
 
         {recipe.instructions ? (
-          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-3 text-lg font-semibold text-stone-900">
-              Fremgangsmåte
-            </h2>
-            <div className="prose prose-stone max-w-none whitespace-pre-wrap text-stone-700">
-              {recipe.instructions}
-            </div>
-          </section>
+          <InstructionsSection instructions={recipe.instructions} />
         ) : (
           !recipe.ingredients.length && (
             <section className="rounded-2xl border border-dashed border-stone-300 bg-white/50 p-8 text-center text-stone-500">
