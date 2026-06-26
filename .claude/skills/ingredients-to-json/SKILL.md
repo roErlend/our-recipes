@@ -46,7 +46,15 @@ clean shape above. Only `name` is mandatory; items without one are skipped.
 6. **Ranges** ("1/2 – 1 lime", "2-3 ss"): pick the lower/typical value for
    `quantity` and put the range in `note` (e.g. `"note": "½–1"`), so the
    shopping-list math still works.
-7. Keep ingredient names in the **source language** (don't translate the food).
+7. **Translate ingredient names to Norwegian (bokmål)** wherever a good
+   equivalent exists — even when the source list is English (e.g. Beef → Biff,
+   Cornstarch → Maisstivelse, Garlic Powder → Hvitløkspulver). Translate `note`s
+   too. Keep proper/brand names as-is. Only keep the source-language word when
+   there's **no clean Norwegian term** (specialty product, regional item, an
+   unfamiliar cut) — an honest English word beats a wrong Norwegian one. Collect
+   anything you left untranslated or were unsure about and show the user a short
+   **"Sjekk oversettelsen"** list afterward (ingredient → why); say so if
+   everything translated cleanly.
 
 ### Metric unit vocabulary (Norwegian)
 
@@ -78,7 +86,8 @@ Output:
 ]
 ```
 
-English input works the same way — just convert any imperial units to metric.
+English input works the same way — convert imperial units to metric and
+translate the names to Norwegian (per rule 7).
 
 ## Finishing up
 
