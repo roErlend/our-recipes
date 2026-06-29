@@ -9,8 +9,11 @@ import { UtensilsCrossed } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
-import { signIn, signUp } from '@/lib/auth-client'
+import { sendVerificationEmail, signIn, signUp } from '@/lib/auth-client'
 import { fetchSession } from '@/server/auth'
+
+/** Where the verification link drops people once they confirm. */
+const VERIFY_CALLBACK = '/recipes'
 
 export const Route = createFileRoute('/login')({
   beforeLoad: async () => {
@@ -27,6 +30,12 @@ function LoginPage() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  // When set, we've sent a verification link to this address and show the
+  // "check your inbox" panel instead of the form.
+  const [awaitingVerification, setAwaitingVerification] = useState<string | null>(
+    null,
+  )
+  const [resendNote, setResendNote] = useState<string | null>(null)
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -38,20 +47,52 @@ function LoginPage() {
     const password = String(data.get('password') ?? '')
     const name = String(data.get('name') ?? '')
 
-    const result =
-      mode === 'signup'
-        ? await signUp.email({ email, password, name: name || email })
-        : await signIn.email({ email, password })
+    if (mode === 'signup') {
+      const result = await signUp.email({
+        email,
+        password,
+        name: name || email,
+        callbackURL: VERIFY_CALLBACK,
+      })
+      setPending(false)
+      if (result.error) {
+        setError(result.error.message ?? 'Noe gikk galt')
+        return
+      }
+      // Account created but not yet usable — verification gates sign-in.
+      setAwaitingVerification(email)
+      return
+    }
 
+    const result = await signIn.email({ email, password })
     setPending(false)
 
     if (result.error) {
+      // Unverified accounts are blocked here; better-auth re-sends the link.
+      if (result.error.code === 'EMAIL_NOT_VERIFIED') {
+        setAwaitingVerification(email)
+        return
+      }
       setError(result.error.message ?? 'Noe gikk galt')
       return
     }
 
     await router.invalidate()
     router.navigate({ to: '/recipes' })
+  }
+
+  async function resend() {
+    if (!awaitingVerification) return
+    setResendNote(null)
+    const result = await sendVerificationEmail({
+      email: awaitingVerification,
+      callbackURL: VERIFY_CALLBACK,
+    })
+    setResendNote(
+      result.error
+        ? (result.error.message ?? 'Kunne ikke sende på nytt')
+        : 'Sendt på nytt – sjekk innboksen.',
+    )
   }
 
   return (
@@ -71,6 +112,39 @@ function LoginPage() {
           </p>
         </div>
 
+        {awaitingVerification ? (
+          <div className="flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-stone-900">
+              Sjekk e-posten din
+            </h2>
+            <p className="text-sm text-stone-600">
+              Vi har sendt en bekreftelseslenke til{' '}
+              <strong className="text-stone-900">{awaitingVerification}</strong>.
+              Klikk lenken for å aktivere kontoen og logge inn.
+            </p>
+            {resendNote && (
+              <p className="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">
+                {resendNote}
+              </p>
+            )}
+            <Button variant="secondary" onPress={resend}>
+              Send lenken på nytt
+            </Button>
+            <button
+              type="button"
+              className="cursor-pointer text-center text-sm font-medium text-brand-700 hover:underline"
+              onClick={() => {
+                setAwaitingVerification(null)
+                setResendNote(null)
+                setError(null)
+                setMode('signin')
+              }}
+            >
+              Tilbake til innlogging
+            </button>
+          </div>
+        ) : (
+          <>
         <Form
           onSubmit={onSubmit}
           className="flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm"
@@ -127,6 +201,8 @@ function LoginPage() {
             {mode === 'signin' ? 'Registrer deg' : 'Logg inn'}
           </button>
         </p>
+          </>
+        )}
       </div>
     </div>
   )
