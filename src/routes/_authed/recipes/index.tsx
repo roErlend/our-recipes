@@ -7,6 +7,7 @@ import {
 import { Link, createFileRoute } from '@tanstack/react-router'
 import {
   Check,
+  Dices,
   ExternalLink,
   Plus,
   Search,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
+import { MealPlanModal } from '@/components/MealPlanModal'
 import { NewRecipeMenu } from '@/components/NewRecipeMenu'
 import { MEAL_TAGS, isMealTag } from '@/lib/tags'
 import { recipesQueryOptions, shoppingQueryOptions } from '@/lib/queries'
@@ -61,16 +63,22 @@ export const Route = createFileRoute('/_authed/recipes/')({
   // when at their default) so other links to /recipes needn't pass them.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { q?: string; tags?: string[]; sort?: SortKey } => {
+  ): { q?: string; tags?: string[]; sort?: SortKey; draw?: string[] } => {
     const q = typeof search.q === 'string' ? search.q : ''
     const rawTags = search.tags
     const tags = (Array.isArray(rawTags) ? rawTags : [rawTags])
       .filter((t): t is string => typeof t === 'string' && t.length > 0)
     const sort = search.sort === 'new' || search.sort === 'az' ? search.sort : undefined
+    // Drawn recipe ids from the "Trekk oppskrifter" dialog, kept here so the
+    // result survives navigating into a recipe and back (the dialog re-seeds).
+    const rawDraw = search.draw
+    const draw = (Array.isArray(rawDraw) ? rawDraw : [rawDraw])
+      .filter((t): t is string => typeof t === 'string' && t.length > 0)
     return {
       ...(q ? { q } : {}),
       ...(tags.length ? { tags } : {}),
       ...(sort ? { sort } : {}),
+      ...(draw.length ? { draw } : {}),
     }
   },
   loader: ({ context }) =>
@@ -90,6 +98,7 @@ function RecipesPage() {
     q: initialSearch = '',
     tags: initialTags = [],
     sort: initialSort = 'rating',
+    draw: initialDraw = [],
   } = Route.useSearch()
   const [search, setSearch] = useState(initialSearch)
   // Selected tag filter, also URL-seeded on mount and kept in the URL below.
@@ -98,6 +107,16 @@ function RecipesPage() {
   // The tag list is tucked behind a toggle so it never crowds the page; open it
   // by default when arriving with a filter already applied (e.g. a deep link).
   const [showFilters, setShowFilters] = useState(initialTags.length > 0)
+  // The "Trekk oppskrifter" randomizer dialog. Reopens automatically when we
+  // arrive with a persisted draw in the URL (e.g. back from a drawn recipe).
+  const [mealPlanOpen, setMealPlanOpen] = useState(initialDraw.length > 0)
+
+  // Mirror the drawn recipe ids to ?draw=… so the result survives navigation.
+  const syncDraw = (ids: string[]) =>
+    void navigate({
+      search: (s) => ({ ...s, draw: ids.length ? ids : undefined }),
+      replace: true,
+    })
 
   // Mirror the term into the URL as a direct consequence of editing (no effect).
   // replace-history avoids an entry per keystroke; an empty term drops the param.
@@ -266,6 +285,16 @@ function RecipesPage() {
             )}
           </button>
         )}
+        {recipes.length > 0 && (
+          <Button
+            variant="secondary"
+            onPress={() => setMealPlanOpen(true)}
+            className="shrink-0"
+          >
+            <Dices className="h-4 w-4" />
+            Trekk oppskrifter
+          </Button>
+        )}
       </div>
 
       {/* The full tag vocabulary lives in this collapsible panel so it never
@@ -364,6 +393,19 @@ function RecipesPage() {
           ))}
         </ul>
       )}
+
+      <MealPlanModal
+        isOpen={mealPlanOpen}
+        onOpenChange={(open) => {
+          setMealPlanOpen(open)
+          if (!open) syncDraw([]) // closing the dialog drops the persisted draw
+        }}
+        recipes={recipes}
+        allTags={allTags}
+        initialDrawIds={initialDraw}
+        onDrawChange={syncDraw}
+        onToggleShopping={toggleShopping}
+      />
     </div>
   )
 }
