@@ -18,9 +18,13 @@ export const auth = betterAuth({
     requireEmailVerification: true,
   },
   emailVerification: {
-    // Send the verification link the moment someone registers, and sign them in
-    // automatically once they click it so they land straight in the app.
-    sendOnSignUp: true,
+    // The login page sends the verification link explicitly (inline) after
+    // signup instead of relying on this background send — that's more reliable
+    // and also covers a repeat signup of an unverified account, which better-auth
+    // answers with a generic success and no email. Kept false to avoid a
+    // duplicate for brand-new users. Sign-in of an unverified account still
+    // auto-sends via better-auth.
+    sendOnSignUp: false,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user: u, url }) => {
       await sendEmail({

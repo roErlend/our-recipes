@@ -54,9 +54,21 @@ function LoginPage() {
         name: name || email,
         callbackURL: VERIFY_CALLBACK,
       })
-      setPending(false)
       if (result.error) {
+        setPending(false)
         setError(result.error.message ?? 'Noe gikk galt')
+        return
+      }
+      // better-auth returns a generic success for both new and already-existing
+      // emails (and no longer auto-sends), so send the link explicitly. Safe for
+      // an already-verified address too — the endpoint just no-ops there.
+      const sent = await sendVerificationEmail({
+        email,
+        callbackURL: VERIFY_CALLBACK,
+      })
+      setPending(false)
+      if (sent.error) {
+        setError(sent.error.message ?? 'Kunne ikke sende bekreftelseslenke')
         return
       }
       // Account created but not yet usable — verification gates sign-in.
@@ -120,7 +132,8 @@ function LoginPage() {
             <p className="text-sm text-stone-600">
               Vi har sendt en bekreftelseslenke til{' '}
               <strong className="text-stone-900">{awaitingVerification}</strong>.
-              Klikk lenken for å aktivere kontoen og logge inn.
+              Klikk lenken for å aktivere kontoen og logge inn. Er kontoen
+              allerede bekreftet, kan du bare logge inn.
             </p>
             {resendNote && (
               <p className="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">
