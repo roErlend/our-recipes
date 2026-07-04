@@ -28,6 +28,9 @@ const shoppingCheckRow = z.object({
   // Manual per-line quantity override (null = use the computed sum). Synced so
   // an edit on one device propagates to the other; see shopping.tsx.
   override_quantity: z.number().nullable(),
+  // When the row was last written (checked/unchecked/override). Electric sends
+  // it as a string; used to sort the checked section most-recently-checked first.
+  updated_at: z.string().nullable(),
 })
 
 export type ShoppingCheckRow = z.infer<typeof shoppingCheckRow>

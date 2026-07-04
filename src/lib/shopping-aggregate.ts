@@ -31,6 +31,9 @@ export interface ShoppingItem {
    */
   isStaple: boolean
   checked: boolean
+  /** When this line was last ticked off (epoch ms), or null when unchecked.
+   *  Drives "most-recently-checked first" ordering in the checked section. */
+  checkedAt: number | null
 }
 
 export interface ShoppingList {
@@ -74,6 +77,8 @@ export function aggregateShoppingEntries(
     isChecked: (itemKey: string) => boolean
     /** Whether the ingredient is a pantry staple. Defaults to never. */
     isStaple?: (name: string) => boolean
+    /** When the line was checked (epoch ms), or null. Defaults to null. */
+    checkedAt?: (itemKey: string) => number | null
   },
 ): { recipes: { id: string; title: string }[]; items: ShoppingItem[] } {
   const map = new Map<string, ShoppingItem>()
@@ -103,12 +108,16 @@ export function aggregateShoppingEntries(
         category: opts.resolveCategory(e.name),
         isStaple: opts.isStaple?.(e.name) ?? false,
         checked: opts.isChecked(e.itemKey),
+        checkedAt: opts.checkedAt?.(e.itemKey) ?? null,
       })
     }
   }
 
   const items = [...map.values()].sort((a, b) => {
     if (a.checked !== b.checked) return a.checked ? 1 : -1
+    // Among checked items, most-recently-checked first; otherwise by name.
+    if (a.checked)
+      return (b.checkedAt ?? 0) - (a.checkedAt ?? 0) || a.name.localeCompare(b.name)
     return a.name.localeCompare(b.name)
   })
 

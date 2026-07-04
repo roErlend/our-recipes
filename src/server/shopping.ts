@@ -14,6 +14,7 @@ import type { ShoppingList } from '@/lib/shopping-aggregate'
 import { requireUser } from '@/server/auth'
 import {
   catalogForScope,
+  ensureCatalogIngredients,
   nameKey,
   saveHouseholdIngredient,
 } from '@/server/ingredients'
@@ -71,6 +72,12 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
       .from(shoppingCheck)
       .where(eq(shoppingCheck.scopeId, householdId))
     const checkedByKey = new Map(checks.map((c) => [c.itemKey, c.checked]))
+    // When each line was last checked, for "most-recently-checked first" order.
+    const checkedAtByKey = new Map(
+      checks
+        .filter((c) => c.checked)
+        .map((c) => [c.itemKey, c.updatedAt.getTime()]),
+    )
     // Manual per-line quantity overrides (see shopping_check.override_quantity).
     const overrideByKey = new Map(
       checks
@@ -87,6 +94,7 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
         catalog.get(nameKey(name))?.category ?? DEFAULT_CATEGORY,
       isStaple: (name) => catalog.get(nameKey(name))?.isStaple ?? false,
       isChecked: (key) => checkedByKey.get(key) ?? false,
+      checkedAt: (key) => checkedAtByKey.get(key) ?? null,
     })
 
     // Attach manual overrides as a separate field (the displayed amount is
@@ -181,6 +189,17 @@ export const addRecipeToShopping = createServerFn({ method: 'POST' })
       )
 
     await db.transaction(async (tx) => {
+      // Make sure every ingredient this recipe uses is a first-class catalog
+      // entry (with a guessed category), so recipe-derived list items are
+      // categorized instead of falling back to "Annet" and can be re-filed from
+      // the admin page. Covers recipes created before catalog-on-save existed;
+      // catalogs the whole recipe regardless of which lines were selected.
+      await ensureCatalogIngredients(
+        tx,
+        householdId,
+        r.ingredients.map((ing) => ing.name),
+      )
+
       await tx
         .delete(shoppingEntry)
         .where(
@@ -302,6 +321,21 @@ export const addManualItem = createServerFn({ method: 'POST' })
           sourceTitle: null,
         })
       }
+
+      // If this item was ticked off, re-adding it means we need it again — just
+      // uncheck it (its quantity / manual override are left untouched). No-op
+      // when it wasn't checked. Covers recipe-derived lines too, since the check
+      // is keyed by item_key regardless of what contributed the entry.
+      await tx
+        .update(shoppingCheck)
+        .set({ checked: false, updatedAt: new Date() })
+        .where(
+          and(
+            eq(shoppingCheck.scopeId, householdId),
+            eq(shoppingCheck.itemKey, key),
+            eq(shoppingCheck.checked, true),
+          ),
+        )
     })
 
     return { key }

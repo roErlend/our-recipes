@@ -123,6 +123,26 @@ describe('aggregateShoppingEntries', () => {
     expect(items.map((i) => i.checked)).toEqual([false, false, true])
   })
 
+  it('orders checked items most-recently-checked first', () => {
+    const checkedAt: Record<string, number> = { a: 100, b: 300, c: 200 }
+    const { items } = aggregateShoppingEntries(
+      [
+        entry({ itemKey: 'a', name: 'Agurk' }),
+        entry({ itemKey: 'b', name: 'Banan' }),
+        entry({ itemKey: 'c', name: 'Eple' }),
+      ],
+      {
+        resolveCategory: cat,
+        isChecked: () => true,
+        checkedAt: (key) => checkedAt[key] ?? null,
+      },
+    )
+
+    // Highest timestamp first: b (300) → c (200) → a (100).
+    expect(items.map((i) => i.name)).toEqual(['Banan', 'Eple', 'Agurk'])
+    expect(items.map((i) => i.checkedAt)).toEqual([300, 200, 100])
+  })
+
   it('derives category and checked from the injected callbacks', () => {
     const { items } = aggregateShoppingEntries(
       [entry({ itemKey: 'flour', name: 'Mel', quantity: 1 })],

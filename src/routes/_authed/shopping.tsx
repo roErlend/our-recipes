@@ -210,6 +210,7 @@ function useShoppingMutations() {
           category,
           isStaple: catalogHit?.isStaple ?? false,
           checked: false,
+          checkedAt: null,
         }
         queryClient.setQueryData<ShoppingList>(shoppingKey, {
           ...previous,
@@ -268,6 +269,7 @@ function ShoppingPage() {
     <ShoppingView
       list={data}
       isChecked={(item) => item.checked}
+      checkedAt={(item) => item.checkedAt}
       onToggle={() => {}}
       onSetQuantity={() => {}}
       online
@@ -320,6 +322,13 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
   const flush = useShoppingFlush()
 
   const checkedByKey = new Map((checkRows ?? []).map((r) => [r.item_key, r.checked]))
+  // When each check was last written, from the synced row's updated_at.
+  const checkedAtByKey = new Map(
+    (checkRows ?? []).map((r) => [
+      r.item_key,
+      r.updated_at ? new Date(r.updated_at).getTime() : null,
+    ]),
+  )
 
   // The outbox is both the durable queue and the optimistic overlay: a pending
   // check/override wins over the synced server value until it has flushed.
@@ -327,6 +336,14 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
     pendingChecked.has(item.key)
       ? pendingChecked.get(item.key)!
       : (checkedByKey.get(item.key) ?? false)
+
+  // A just-tapped (still-pending) check floats to the top of the checked
+  // section until it syncs; otherwise use the synced timestamp (falling back to
+  // the server snapshot's value).
+  const checkedAt = (item: ShoppingItem) =>
+    pendingChecked.get(item.key) === true
+      ? Number.MAX_SAFE_INTEGER
+      : (checkedAtByKey.get(item.key) ?? item.checkedAt)
 
   const overlaidList =
     pendingOverride.size === 0
@@ -354,6 +371,7 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
     <ShoppingView
       list={overlaidList}
       isChecked={isChecked}
+      checkedAt={checkedAt}
       onToggle={toggle}
       onSetQuantity={onSetQuantity}
       online={online}
@@ -365,6 +383,7 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
 function ShoppingView({
   list,
   isChecked,
+  checkedAt,
   onToggle,
   onSetQuantity,
   online,
@@ -372,6 +391,8 @@ function ShoppingView({
 }: {
   list: ShoppingList
   isChecked: (item: ShoppingItem) => boolean
+  /** When a line was checked (epoch ms), or null — sorts the checked section. */
+  checkedAt: (item: ShoppingItem) => number | null
   onToggle: (item: ShoppingItem, checked: boolean) => void
   onSetQuantity: (key: string, quantity: number | null) => void
   /** False when the browser is offline — disables actions that need the network. */
@@ -393,7 +414,7 @@ function ShoppingView({
     )
   const buyable = items.filter((i) => !i.isStaple)
   // Unchecked items are grouped under category headers; checked items all drop
-  // to a single section at the very bottom (ordered by category, then name).
+  // to a single section at the very bottom, most-recently-checked first.
   const uncheckedGroups = groupItems(
     buyable.filter((i) => !isChecked(i)),
     isChecked,
@@ -402,7 +423,7 @@ function ShoppingView({
     .filter((i) => isChecked(i))
     .sort(
       (a, b) =>
-        categoryRank(a.category) - categoryRank(b.category) ||
+        (checkedAt(b) ?? 0) - (checkedAt(a) ?? 0) ||
         a.name.localeCompare(b.name, 'nb'),
     )
   const checkedCount = checkedItems.length
