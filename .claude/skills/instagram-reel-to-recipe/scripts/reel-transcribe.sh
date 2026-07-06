@@ -60,8 +60,33 @@ fi
 
 # caption / description from the metadata sidecar
 CAPTION=""
-INFO="$(ls "$WORK"/*.info.json 2>/dev/null | head -1 || true)"
+INFO="$(ls "$WORK"/reel*.info.json 2>/dev/null | head -1 || true)"
 [[ -n "$INFO" ]] && CAPTION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("description") or "")' "$INFO")"
+
+# Recipe creators very often put the full ingredient list + steps in a PINNED
+# (or author) comment rather than the caption/narration. Fetch comments
+# best-effort — a failure here (rate limit, login-gated, no comments) must never
+# block transcription.
+PINNED=""
+echo "→ Checking pinned/author comment…" >&2
+if yt-dlp --skip-download --write-info-json --write-comments \
+    --extractor-args "youtube:max_comments=60,all,60,10;comment_sort=top" \
+    -o "$WORK/c.%(ext)s" "$URL" >/dev/null 2>&1; then
+  CINFO="$(ls "$WORK"/c*.info.json 2>/dev/null | head -1 || true)"
+  # Prefer a pinned comment, else the uploader's own top comment.
+  [[ -n "$CINFO" ]] && PINNED="$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit()
+cs = d.get("comments") or []
+pick = next((c for c in cs if c.get("is_pinned")), None) or next(
+    (c for c in cs if c.get("author_is_uploader")), None)
+if pick:
+    print((pick.get("text") or "").strip())
+' "$CINFO")"
+fi
 
 VIDEO="$(ls "$WORK"/reel.* 2>/dev/null | grep -vi '\.info\.json$' | head -1 || true)"
 if [[ -z "$VIDEO" ]]; then
@@ -91,6 +116,8 @@ TXT="$WORK/audio.txt"
 # --- output -------------------------------------------------------------------
 echo "===== CAPTION ====="
 printf '%s\n' "$CAPTION"
+echo "===== PINNED/AUTHOR COMMENT ====="
+printf '%s\n' "$PINNED"
 echo "===== TRANSCRIPT ====="
 cat "$TXT"
 echo "===== END ====="

@@ -22,15 +22,22 @@ audio/caption, not the HTML.
    .claude/skills/instagram-reel-to-recipe/scripts/reel-transcribe.sh "<URL>"
    ```
 
-   It prints two blocks to stdout:
+   It prints three blocks to stdout:
 
    ```
    ===== CAPTION =====
    …the post's caption/description (often has the full recipe)…
+   ===== PINNED/AUTHOR COMMENT =====
+   …the creator's pinned (or own) comment — frequently the FULL recipe…
    ===== TRANSCRIPT =====
    …Whisper transcript of the narration…
    ===== END =====
    ```
+
+   **Always check the caption AND the pinned/author comment first** — creators
+   routinely drop the complete ingredient list + steps (with real quantities)
+   there, while the narration just gabs. The pinned comment usually beats the
+   transcript; use the transcript to fill gaps or when both are empty.
 
 2. **If it reports missing tools**, relay the one-time install it prints
    (`brew install yt-dlp ffmpeg pipx` → `pipx install openai-whisper`) and offer
@@ -47,15 +54,18 @@ audio/caption, not the HTML.
 
 ## Turning it into the recipe
 
-You now have a **caption** and a **transcript**. Combine them:
+You now have a **caption**, a **pinned/author comment**, and a **transcript**.
+Combine them, in priority order:
 
-- **Prefer the caption** for ingredients + amounts when it lists them — captions
-  usually have clean quantities; spoken narration rarely does.
-- **Use the transcript for the method** — flatten it into concise, numbered
-  steps (drop filler like "save that takeout money", "give it a mix", "you just
-  gotta make it"). One action per line.
-- If the transcript names something the caption omits (e.g. "green onions"), add
-  it to the ingredients and **flag it** so the user can confirm the amount.
+- **Prefer the pinned/author comment, then the caption**, for ingredients +
+  amounts and steps — these usually carry the full recipe with clean quantities.
+  A pinned comment that lists ingredients *and* instructions is the recipe; use
+  it near-verbatim (translated).
+- **Use the transcript to fill gaps** — the method when it's not written out, or
+  extras the narration mentions (e.g. "serve with rice"). Drop filler ("save
+  that takeout money", "give it a mix", "you just gotta make it").
+- If a source names something the others omit, add it and **flag it** so the user
+  can confirm the amount.
 
 Then produce the JSON exactly per the **`recipe-url-to-json`** skill's output
 format and rules — same object shape (`title`, `description`, `sourceUrl`,
