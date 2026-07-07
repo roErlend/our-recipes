@@ -13,13 +13,13 @@ import { sendVerificationEmail, signIn, signUp } from '@/lib/auth-client'
 import { fetchSession } from '@/server/auth'
 
 /** Where the verification link drops people once they confirm. */
-const VERIFY_CALLBACK = '/recipes'
+const VERIFY_CALLBACK = '/shopping'
 
 export const Route = createFileRoute('/login')({
   beforeLoad: async () => {
     const session = await fetchSession()
     if (session?.user) {
-      throw redirect({ to: '/recipes' })
+      throw redirect({ to: '/shopping' })
     }
   },
   component: LoginPage,
@@ -90,7 +90,7 @@ function LoginPage() {
     }
 
     await router.invalidate()
-    router.navigate({ to: '/recipes' })
+    router.navigate({ to: '/shopping' })
   }
 
   async function resend() {

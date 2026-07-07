@@ -3,7 +3,7 @@
   "short_name": "Oppskrifter",
   "description": "Felles oppskrifter og handleliste",
   "lang": "no",
-  "start_url": "/recipes",
+  "start_url": "/shopping",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
