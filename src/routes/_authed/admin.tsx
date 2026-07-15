@@ -465,6 +465,7 @@ function IngredientRow({
           value={category}
           onChange={setCategory}
           maxLength={60}
+          suppressKeyboard
           aria-label={`Kategori for ${ingredient.name}`}
           className="min-w-0 flex-1 sm:w-44 sm:flex-none"
         />

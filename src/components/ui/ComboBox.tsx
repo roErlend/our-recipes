@@ -27,6 +27,13 @@ export interface ComboBoxProps {
   maxLength?: number
   /** Applied to the outer field (use for width / flex sizing). */
   className?: string
+  /**
+   * Suppress the on-screen keyboard (`inputMode="none"`). The field still
+   * focuses and opens its suggestion list, so you pick by tapping instead of
+   * typing — handy on mobile when you're almost always choosing an existing
+   * value. Physical keyboards still type, so desktop is unaffected.
+   */
+  suppressKeyboard?: boolean
 }
 
 export function ComboBox({
@@ -36,6 +43,7 @@ export function ComboBox({
   placeholder,
   maxLength,
   className,
+  suppressKeyboard,
   'aria-label': ariaLabel,
 }: ComboBoxProps) {
   return (
@@ -53,6 +61,7 @@ export function ComboBox({
         <Input
           placeholder={placeholder}
           maxLength={maxLength}
+          inputMode={suppressKeyboard ? 'none' : undefined}
           className={[
             'w-full rounded-lg border border-stone-300 bg-white px-2 py-1.5 pr-8 text-sm text-stone-700',
             'placeholder:text-stone-400 outline-none',
