@@ -64,7 +64,17 @@ export function ComboBox({
           <ChevronDown className="h-4 w-4" />
         </AriaButton>
       </div>
-      <Popover className="max-h-60 w-[var(--trigger-width)] overflow-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg outline-none">
+      <Popover
+        // Prefer opening upward. On mobile the on-screen keyboard covers the
+        // bottom half of the screen, but React Aria positions against the
+        // layout viewport (which the keyboard doesn't shrink), so a downward
+        // popover ends up hidden behind the keyboard — and the combobox closes
+        // the list the moment you scroll to reach it. Opening above keeps the
+        // options in the visible area; React Aria still flips down when the
+        // field is near the top of the screen and there's no room above.
+        placement="top"
+        className="max-h-60 w-[var(--trigger-width)] overflow-auto rounded-lg border border-stone-200 bg-white py-1 shadow-lg outline-none"
+      >
         <ListBox className="outline-none" renderEmptyState={() => null}>
           {items.map((item) => (
             <ListBoxItem

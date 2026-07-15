@@ -22,6 +22,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { isAdminEmail } from '@/lib/admin'
 import { signOut } from '@/lib/auth-client'
+import { useKeyboardOpen } from '@/lib/useKeyboardOpen'
 import { useSwipeBack } from '@/lib/useSwipeBack'
 import {
   pendingInvitesQueryOptions,
@@ -64,6 +65,9 @@ function AuthedLayout() {
   const { user } = Route.useRouteContext()
   const router = useRouter()
   useSwipeBack()
+  // Hide the bottom tab bar while the on-screen keyboard is up — it just eats
+  // space above the keyboard (and can overlap focused inputs) on phones.
+  const keyboardOpen = useKeyboardOpen()
 
   const nav = isAdminEmail(user.email)
     ? [
@@ -131,9 +135,12 @@ function AuthedLayout() {
         <Outlet />
       </main>
 
-      {/* Mobile bottom tab bar — the primary navigation on phones. */}
+      {/* Mobile bottom tab bar — the primary navigation on phones. Hidden while
+          the keyboard is up so it doesn't waste space above it. */}
       <nav
-        className={`fixed inset-x-0 bottom-0 z-20 grid ${mobileCols} border-t border-stone-200 bg-stone-100/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden`}
+        className={`fixed inset-x-0 bottom-0 z-20 grid ${mobileCols} border-t border-stone-200 bg-stone-100/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden ${
+          keyboardOpen ? 'hidden' : ''
+        }`}
       >
         {nav.map(({ to, label, icon: Icon, activeOptions }) => {
           const tab =
