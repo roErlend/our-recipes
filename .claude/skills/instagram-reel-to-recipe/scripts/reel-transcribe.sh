@@ -101,7 +101,11 @@ ffmpeg -y -i "$VIDEO" -vn -ac 1 -ar 16000 "$WORK/audio.wav" >/dev/null 2>&1
 echo "→ Transcribing with $TRANSCRIBER (auto language)…" >&2
 case "$TRANSCRIBER" in
   mlx_whisper)
-    mlx_whisper "$WORK/audio.wav" --output-dir "$WORK" --output-format txt >&2 ;;
+    # mlx defaults to a weak `tiny`; pass a good repo explicitly (fast + accurate
+    # on Apple Silicon). Override with MLX_MODEL=<hf-repo> if needed.
+    mlx_whisper "$WORK/audio.wav" \
+      --model "${MLX_MODEL:-mlx-community/whisper-large-v3-turbo}" \
+      --output-dir "$WORK" --output-format txt >&2 ;;
   whisper)
     whisper "$WORK/audio.wav" --model base --output_format txt \
       --output_dir "$WORK" --verbose False >&2 ;;
