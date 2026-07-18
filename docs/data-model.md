@@ -105,11 +105,25 @@ category grouping. Two kinds of rows, distinguished by `scope_id`:
 - **household** (`scope_id` = household id) — ingredients a member typed that the
   autocomplete didn't know. A household row **shadows** a stock row of the same name.
 
-`ingredient_category` holds admin-created category names so they persist
-independently of any ingredient using them. The full category set shown in the
-app = canonical list (`src/lib/categories.ts`) ∪ `ingredient_category` rows ∪
-categories currently used by catalog rows. Ordering/normalization helpers live in
-`src/lib/categories.ts` (client-safe, no DB import).
+**Copy-on-write (`/ingredienser`).** Households manage their catalog on the
+`/ingredienser` page (all users; `src/routes/_authed/ingredienser.tsx`). Stock
+rows are read-only **templates**: editing one (`saveHouseholdCatalogItem`) forks
+a household-scoped copy, never mutating the stock row. A household can rename /
+delete only its **own** rows (`deleteHouseholdCatalogItem` verifies
+`scope_id === householdId`); deleting a fork reverts to the stock template.
+`/admin` still curates the global stock (admin-only). The old
+`saveHouseholdIngredient` (shopping add-box) forks the same way for category.
+
+`ingredient_category` is **also scope-aware** (like the catalog): `scope_id` NULL
+= global (canonical/admin template), else a household's own category. Partial
+unique indexes keep global vs household names from colliding. A household
+creates/renames/deletes only its own categories on `/ingredienser`
+(`create/rename/deleteHouseholdCategory`); global/canonical ones are read-only
+templates there. The category set a household sees = canonical
+(`src/lib/categories.ts`) ∪ global rows ∪ its own rows ∪ categories used by the
+catalog rows visible to it (`listCategories`, now household-scoped).
+Ordering/normalization helpers live in `src/lib/categories.ts` (client-safe, no
+DB import).
 
 ## Auth tables
 

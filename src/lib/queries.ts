@@ -2,7 +2,12 @@ import { queryOptions } from '@tanstack/react-query'
 
 import { withOfflineCache } from '@/lib/offline'
 import { adminListIngredients } from '@/server/admin'
-import { listCategories, listIngredients } from '@/server/ingredients'
+import {
+  listCategories,
+  listHouseholdCatalog,
+  listHouseholdCategories,
+  listIngredients,
+} from '@/server/ingredients'
 import { getRecipe, listRecipes } from '@/server/recipes'
 import { getShoppingList } from '@/server/shopping'
 import { getPendingInvites, getSharing } from '@/server/sharing'
@@ -68,4 +73,18 @@ export const adminIngredientsQueryOptions = () =>
   queryOptions({
     queryKey: ['admin', 'ingredients'] as const,
     queryFn: () => adminListIngredients(),
+  })
+
+/** The household's catalog (stock + own) for the /ingredienser management page. */
+export const householdCatalogQueryOptions = () =>
+  queryOptions({
+    queryKey: ['household', 'catalog'] as const,
+    queryFn: () => listHouseholdCatalog(),
+  })
+
+/** The household's categories (global templates + own) for /ingredienser. */
+export const householdCategoriesQueryOptions = () =>
+  queryOptions({
+    queryKey: ['household', 'categories'] as const,
+    queryFn: () => listHouseholdCategories(),
   })

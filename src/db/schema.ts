@@ -360,17 +360,35 @@ export const ingredientCatalog = pgTable(
 )
 
 /**
- * Admin-created categories that persist on their own (independently of whether
- * any ingredient currently uses them). The full set of categories shown in the
- * app is the canonical list in `src/lib/categories.ts` ∪ these rows ∪ whatever
- * categories appear on {@link ingredientCatalog} rows. Global (not scoped).
+ * Categories that persist on their own (independently of whether any ingredient
+ * currently uses them). The full set of categories a household sees is the
+ * canonical list in `src/lib/categories.ts` ∪ the global rows (`scope_id` NULL)
+ * ∪ that household's own rows ∪ whatever categories appear on the
+ * {@link ingredientCatalog} rows visible to it. Global rows are admin-curated
+ * templates; household rows are scoped and managed on `/ingredienser`.
  */
-export const ingredientCategory = pgTable('ingredient_category', {
-  name: text('name').primaryKey(),
-  createdAt: timestamp('created_at')
-    .$defaultFn(() => new Date())
-    .notNull(),
-})
+export const ingredientCategory = pgTable(
+  'ingredient_category',
+  {
+    name: text('name').notNull(),
+    /** NULL = global (canonical / admin-created); otherwise the household scope id. */
+    scopeId: text('scope_id'),
+    createdAt: timestamp('created_at')
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (t) => [
+    // One global row per name; one household row per (household, name). Like
+    // ingredient_catalog, NULL scopes and household scopes never collide, so a
+    // household keeps its own categories without clashing with the globals.
+    uniqueIndex('ingredient_category_global_uq')
+      .on(t.name)
+      .where(sql`scope_id is null`),
+    uniqueIndex('ingredient_category_scope_uq')
+      .on(t.scopeId, t.name)
+      .where(sql`scope_id is not null`),
+  ],
+)
 
 /* -------------------------------------------------------------------------- */
 /*  Relations                                                                 */

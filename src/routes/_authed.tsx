@@ -11,6 +11,7 @@ import {
   useRouter,
 } from '@tanstack/react-router'
 import {
+  Carrot,
   ChefHat,
   ListChecks,
   LogOut,
@@ -58,8 +59,16 @@ const activeNavLinkClass = 'bg-white text-brand-700 shadow-sm hover:bg-white'
 const NAV = [
   { to: '/shopping', label: 'Handleliste', icon: ListChecks, activeOptions: undefined },
   { to: '/recipes', label: 'Oppskrifter', icon: ChefHat, activeOptions: { exact: false } },
+  { to: '/ingredienser', label: 'Ingredienser', icon: Carrot, activeOptions: undefined },
   { to: '/deling', label: 'Deling', icon: UserPlus, activeOptions: undefined },
 ] as const
+
+/** Bottom-tab grid columns by tab count (kept as static classes for Tailwind). */
+const MOBILE_COLS: Record<number, string> = {
+  3: 'grid-cols-3',
+  4: 'grid-cols-4',
+  5: 'grid-cols-5',
+}
 
 function AuthedLayout() {
   const { user } = Route.useRouteContext()
@@ -75,7 +84,7 @@ function AuthedLayout() {
         { to: '/admin', label: 'Admin', icon: Shield, activeOptions: undefined } as const,
       ]
     : NAV
-  const mobileCols = nav.length === 4 ? 'grid-cols-4' : 'grid-cols-3'
+  const mobileCols = MOBILE_COLS[nav.length] ?? 'grid-cols-4'
 
   async function handleSignOut() {
     await signOut()

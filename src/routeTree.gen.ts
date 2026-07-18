@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedShoppingRouteImport } from './routes/_authed/shopping'
+import { Route as AuthedIngredienserRouteImport } from './routes/_authed/ingredienser'
 import { Route as AuthedDelingRouteImport } from './routes/_authed/deling'
 import { Route as AuthedAdminRouteImport } from './routes/_authed/admin'
 import { Route as AuthedRecipesIndexRouteImport } from './routes/_authed/recipes/index'
@@ -41,6 +42,11 @@ const IndexRoute = IndexRouteImport.update({
 const AuthedShoppingRoute = AuthedShoppingRouteImport.update({
   id: '/shopping',
   path: '/shopping',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedIngredienserRoute = AuthedIngredienserRouteImport.update({
+  id: '/ingredienser',
+  path: '/ingredienser',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedDelingRoute = AuthedDelingRouteImport.update({
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/admin': typeof AuthedAdminRoute
   '/deling': typeof AuthedDelingRoute
+  '/ingredienser': typeof AuthedIngredienserRoute
   '/shopping': typeof AuthedShoppingRoute
   '/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/recipes/new': typeof AuthedRecipesNewRoute
@@ -116,6 +123,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/admin': typeof AuthedAdminRoute
   '/deling': typeof AuthedDelingRoute
+  '/ingredienser': typeof AuthedIngredienserRoute
   '/shopping': typeof AuthedShoppingRoute
   '/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/recipes/new': typeof AuthedRecipesNewRoute
@@ -133,6 +141,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authed/admin': typeof AuthedAdminRoute
   '/_authed/deling': typeof AuthedDelingRoute
+  '/_authed/ingredienser': typeof AuthedIngredienserRoute
   '/_authed/shopping': typeof AuthedShoppingRoute
   '/_authed/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/_authed/recipes/new': typeof AuthedRecipesNewRoute
@@ -150,6 +159,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/admin'
     | '/deling'
+    | '/ingredienser'
     | '/shopping'
     | '/recipes/$recipeId'
     | '/recipes/new'
@@ -165,6 +175,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/admin'
     | '/deling'
+    | '/ingredienser'
     | '/shopping'
     | '/recipes/$recipeId'
     | '/recipes/new'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authed/admin'
     | '/_authed/deling'
+    | '/_authed/ingredienser'
     | '/_authed/shopping'
     | '/_authed/recipes/$recipeId'
     | '/_authed/recipes/new'
@@ -230,6 +242,13 @@ declare module '@tanstack/react-router' {
       path: '/shopping'
       fullPath: '/shopping'
       preLoaderRoute: typeof AuthedShoppingRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/ingredienser': {
+      id: '/_authed/ingredienser'
+      path: '/ingredienser'
+      fullPath: '/ingredienser'
+      preLoaderRoute: typeof AuthedIngredienserRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/_authed/deling': {
@@ -308,6 +327,7 @@ declare module '@tanstack/react-router' {
 interface AuthedRouteChildren {
   AuthedAdminRoute: typeof AuthedAdminRoute
   AuthedDelingRoute: typeof AuthedDelingRoute
+  AuthedIngredienserRoute: typeof AuthedIngredienserRoute
   AuthedShoppingRoute: typeof AuthedShoppingRoute
   AuthedRecipesRecipeIdRoute: typeof AuthedRecipesRecipeIdRoute
   AuthedRecipesNewRoute: typeof AuthedRecipesNewRoute
@@ -318,6 +338,7 @@ interface AuthedRouteChildren {
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedAdminRoute: AuthedAdminRoute,
   AuthedDelingRoute: AuthedDelingRoute,
+  AuthedIngredienserRoute: AuthedIngredienserRoute,
   AuthedShoppingRoute: AuthedShoppingRoute,
   AuthedRecipesRecipeIdRoute: AuthedRecipesRecipeIdRoute,
   AuthedRecipesNewRoute: AuthedRecipesNewRoute,
