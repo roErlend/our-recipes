@@ -638,30 +638,33 @@ function ShoppingRow({
 
   return (
     <li className="flex items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-0">
+      {/* The whole left region — checkbox through the name, up to the amount
+          buttons — is one clickable toggle target (react-aria Checkbox label). */}
       <Checkbox
         isSelected={checked}
         onChange={(value) => onToggle(item, value)}
         aria-label={`Merk ${item.name} som kjøpt`}
-        className="-m-2 p-2"
-      />
-      <div className="min-w-0 flex-1">
-        <span
-          className={
-            checked
-              ? 'text-stone-400 line-through'
-              : muted
-                ? 'text-stone-400'
-                : 'font-medium text-stone-900'
-          }
-        >
-          {item.name}
-        </span>
-        {item.sources.length > 0 && (
-          <span className="ml-2 text-sm text-stone-400">
-            {item.sources.join(', ')}
+        className="-my-2 min-w-0 flex-1 py-2"
+      >
+        <span className="min-w-0 flex-1">
+          <span
+            className={
+              checked
+                ? 'text-stone-400 line-through'
+                : muted
+                  ? 'text-stone-400'
+                  : 'font-medium text-stone-900'
+            }
+          >
+            {item.name}
           </span>
-        )}
-      </div>
+          {item.sources.length > 0 && (
+            <span className="ml-2 text-sm text-stone-400">
+              {item.sources.join(', ')}
+            </span>
+          )}
+        </span>
+      </Checkbox>
       {editing ? (
         <span className="flex shrink-0 items-center gap-1">
           <input
