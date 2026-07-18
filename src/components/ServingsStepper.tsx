@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import { Minus, Plus, RotateCcw, Users } from 'lucide-react'
 
 /** "3" for whole counts, "2,7" (one decimal, Norwegian comma) for fractional
@@ -29,6 +30,22 @@ export function ServingsStepper({
   onServingsChange: (n: number) => void
 }) {
   const scaled = servings !== defaultServings
+
+  // The count doubles as a direct input: tap, type the target (party of 15!),
+  // Enter/blur commits, Escape reverts. `draft` is null when not editing.
+  const [draft, setDraft] = useState<string | null>(null)
+  const cancelled = useRef(false)
+  const commit = () => {
+    const wasCancelled = cancelled.current
+    cancelled.current = false
+    const raw = draft
+    setDraft(null)
+    if (wasCancelled || raw == null) return
+    const v = Number(raw.trim().replace(',', '.'))
+    if (!Number.isFinite(v) || v <= 0) return
+    onServingsChange(Math.min(100, Math.max(1, v)))
+  }
+
   return (
     <div className="inline-flex items-center gap-2 text-sm text-stone-600">
       <Users className="h-4 w-4 text-stone-400" />
@@ -42,9 +59,25 @@ export function ServingsStepper({
         >
           <Minus className="h-4 w-4" />
         </button>
-        <span className="w-8 text-center font-medium tabular-nums text-stone-900">
-          {formatServings(servings)}
-        </span>
+        <input
+          inputMode="decimal"
+          value={draft ?? formatServings(servings)}
+          aria-label="Antall porsjoner"
+          onFocus={(e) => {
+            setDraft(formatServings(servings))
+            e.currentTarget.select()
+          }}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+            else if (e.key === 'Escape') {
+              cancelled.current = true
+              e.currentTarget.blur()
+            }
+          }}
+          className="w-10 bg-transparent text-center font-medium tabular-nums text-stone-900 outline-none focus:bg-brand-50"
+        />
         <button
           type="button"
           aria-label="Flere porsjoner"
