@@ -5,7 +5,18 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Carrot, Check, Home, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import {
+  Carrot,
+  Check,
+  Home,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react'
+import { Dialog, Heading, Modal, ModalOverlay } from 'react-aria-components'
 
 import { Button } from '@/components/ui/Button'
 import { ComboBox } from '@/components/ui/ComboBox'
@@ -22,6 +33,8 @@ import {
   deleteHouseholdCatalogItem,
   deleteHouseholdCategory,
   renameHouseholdCategory,
+  resetHouseholdCatalog,
+  resetHouseholdCategories,
   saveHouseholdCatalogItem,
   type HouseholdCatalogRow,
   type HouseholdCategoryRow,
@@ -69,8 +82,8 @@ function IngredientsPage() {
         <div>
           <h1 className="text-2xl font-bold text-stone-900">Ingredienser</h1>
           <p className="text-sm text-stone-500">
-            Tilpass kategorier og ingredienser for husholdningen din. De globale
-            fungerer som maler – endrer du en, lager vi en egen kopi til dere.
+            Husholdningens egne kategorier og ingredienser. Dere starter med en
+            kopi av malene og kan endre alt fritt – eller hente malene på nytt.
           </p>
         </div>
       </div>
@@ -99,14 +112,25 @@ function CategoriesSection({ categories }: { categories: HouseholdCategoryRow[] 
     mutationFn: (name: string) => deleteHouseholdCategory({ data: { name } }),
     onSuccess: invalidate,
   })
+  const reset = useMutation({
+    mutationFn: () => resetHouseholdCategories(),
+    onSuccess: invalidate,
+  })
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold text-stone-900">Kategorier</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-stone-900">Kategorier</h2>
+        <ResetTemplatesButton
+          title="Tilbakestille kategoriene?"
+          description="Alle kategoriene deres erstattes med en fersk kopi av malene. Egne kategorier forsvinner fra listen – ingrediensene beholder kategorien de står i, men den må lages på nytt om dere vil bruke den videre."
+          busy={reset.isPending}
+          onConfirm={() => reset.mutate()}
+        />
+      </div>
       <p className="text-sm text-stone-500">
-        Lag egne kategorier, eller endre navn / slett de du har laget selv (varene
-        flyttes til «{DEFAULT_CATEGORY}»). Globale kategorier er maler og kan ikke
-        endres her.
+        Lag egne kategorier, endre navn eller slett dem (varene flyttes til «
+        {DEFAULT_CATEGORY}»). Endringene gjelder bare deres husholdning.
       </p>
       <AddRow
         placeholder="Ny kategori…"
@@ -182,7 +206,8 @@ function CategoryRow({
 }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(category.name)
-  const isOwn = category.origin === 'household'
+  // The default category is the reassignment target when others are deleted.
+  const deletable = category.name !== DEFAULT_CATEGORY
 
   const save = () => {
     const to = value.trim()
@@ -208,39 +233,32 @@ function CategoryRow({
           className="flex-1 rounded-lg border border-stone-300 px-2 py-1 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
         />
       ) : (
-        <span className="flex flex-1 items-center gap-2 font-medium text-stone-800">
-          {category.name}
-          {!isOwn && (
-            <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-normal text-stone-500">
-              global
-            </span>
-          )}
-        </span>
+        <span className="flex-1 font-medium text-stone-800">{category.name}</span>
       )}
       <span className="text-xs text-stone-400">
         {category.count} {category.count === 1 ? 'vare' : 'varer'}
       </span>
-      {isOwn ? (
-        editing ? (
-          <>
-            <IconButton label="Lagre" onClick={save} disabled={busy} tone="brand">
-              <Check className="h-4 w-4" />
-            </IconButton>
-            <IconButton
-              label="Avbryt"
-              onClick={() => {
-                setValue(category.name)
-                setEditing(false)
-              }}
-            >
-              <X className="h-4 w-4" />
-            </IconButton>
-          </>
-        ) : (
-          <>
-            <IconButton label="Endre navn" onClick={() => setEditing(true)}>
-              <Pencil className="h-4 w-4" />
-            </IconButton>
+      {editing ? (
+        <>
+          <IconButton label="Lagre" onClick={save} disabled={busy} tone="brand">
+            <Check className="h-4 w-4" />
+          </IconButton>
+          <IconButton
+            label="Avbryt"
+            onClick={() => {
+              setValue(category.name)
+              setEditing(false)
+            }}
+          >
+            <X className="h-4 w-4" />
+          </IconButton>
+        </>
+      ) : (
+        <>
+          <IconButton label="Endre navn" onClick={() => setEditing(true)}>
+            <Pencil className="h-4 w-4" />
+          </IconButton>
+          {deletable && (
             <IconButton
               label={`Slett kategorien ${category.name}`}
               onClick={onDelete}
@@ -249,9 +267,9 @@ function CategoryRow({
             >
               <Trash2 className="h-4 w-4" />
             </IconButton>
-          </>
-        )
-      ) : null}
+          )}
+        </>
+      )}
     </li>
   )
 }
@@ -281,6 +299,10 @@ function IngredientsSection({
     mutationFn: (id: string) => deleteHouseholdCatalogItem({ data: { id } }),
     onSuccess: invalidate,
   })
+  const reset = useMutation({
+    mutationFn: () => resetHouseholdCatalog(),
+    onSuccess: invalidate,
+  })
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -294,10 +316,18 @@ function IngredientsSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold text-stone-900">
-        Ingredienser{' '}
-        <span className="text-sm font-normal text-stone-400">({catalog.length})</span>
-      </h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-stone-900">
+          Ingredienser{' '}
+          <span className="text-sm font-normal text-stone-400">({catalog.length})</span>
+        </h2>
+        <ResetTemplatesButton
+          title="Tilbakestille ingrediensene?"
+          description="Hele ingredienslisten deres erstattes med en fersk kopi av malene. Ingredienser dere har lagt til eller endret selv, slettes og kan ikke hentes tilbake."
+          busy={reset.isPending}
+          onConfirm={() => reset.mutate()}
+        />
+      </div>
 
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-stone-400" />
@@ -405,7 +435,6 @@ function IngredientRow({
   const [name, setName] = useState(ingredient.name)
   const [category, setCategory] = useState(ingredient.category)
   const [staple, setStaple] = useState(ingredient.staple)
-  const isOwn = ingredient.origin === 'household'
 
   const dirty =
     name.trim() !== ingredient.name ||
@@ -415,20 +444,13 @@ function IngredientRow({
 
   return (
     <li className="flex flex-col gap-2 border-b border-stone-100 px-4 py-3 last:border-0 sm:flex-row sm:flex-wrap sm:items-center">
-      {isOwn ? (
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={200}
-          aria-label={`Navn på ${ingredient.name}`}
-          className="w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:min-w-0 sm:flex-1"
-        />
-      ) : (
-        // Stock template: name is read-only (editing category/staple forks a copy).
-        <span className="w-full px-2 py-1.5 text-sm font-medium text-stone-800 sm:min-w-0 sm:flex-1">
-          {ingredient.name}
-        </span>
-      )}
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        maxLength={200}
+        aria-label={`Navn på ${ingredient.name}`}
+        className="w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 sm:min-w-0 sm:flex-1"
+      />
       <div className="flex items-center gap-2">
         <ComboBox
           items={categories}
@@ -453,15 +475,6 @@ function IngredientRow({
         >
           <Home className="h-4 w-4" />
         </button>
-        {isOwn ? (
-          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
-            egen
-          </span>
-        ) : (
-          <span className="shrink-0 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
-            global
-          </span>
-        )}
         <IconButton
           label={`Lagre ${ingredient.name}`}
           onClick={() => onSave(name.trim(), category.trim(), staple)}
@@ -470,22 +483,82 @@ function IngredientRow({
         >
           <Check className="h-4 w-4" />
         </IconButton>
-        {isOwn && (
-          <IconButton
-            label={`Slett ${ingredient.name}`}
-            onClick={onDelete}
-            disabled={busy}
-            tone="danger"
-          >
-            <Trash2 className="h-4 w-4" />
-          </IconButton>
-        )}
+        <IconButton
+          label={`Slett ${ingredient.name}`}
+          onClick={onDelete}
+          disabled={busy}
+          tone="danger"
+        >
+          <Trash2 className="h-4 w-4" />
+        </IconButton>
       </div>
     </li>
   )
 }
 
 /* -------------------------------- shared -------------------------------- */
+
+/**
+ * "Tilbakestill til maler" with a blocking confirmation dialog — the reset
+ * replaces the household's data with a fresh template copy, so it must never
+ * fire on a stray tap.
+ */
+function ResetTemplatesButton({
+  title,
+  description,
+  busy,
+  onConfirm,
+}: {
+  title: string
+  description: string
+  busy: boolean
+  onConfirm: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onPress={() => setOpen(true)}
+        isDisabled={busy}
+        className="shrink-0 text-stone-500"
+      >
+        <RotateCcw className="h-4 w-4" />
+        Tilbakestill til maler
+      </Button>
+      <ModalOverlay
+        isOpen={open}
+        onOpenChange={setOpen}
+        isDismissable
+        className="fixed inset-0 z-30 flex items-start justify-center bg-stone-900/30 p-4 pt-[10vh] backdrop-blur-sm"
+      >
+        <Modal className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl outline-none">
+          <Dialog role="alertdialog" className="outline-none">
+            <Heading slot="title" className="text-lg font-semibold text-stone-900">
+              {title}
+            </Heading>
+            <p className="mt-2 text-sm text-stone-600">{description}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" onPress={() => setOpen(false)}>
+                Avbryt
+              </Button>
+              <Button
+                variant="danger"
+                onPress={() => {
+                  setOpen(false)
+                  onConfirm()
+                }}
+              >
+                Tilbakestill
+              </Button>
+            </div>
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
+    </>
+  )
+}
 
 function IconButton({
   label,

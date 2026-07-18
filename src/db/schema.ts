@@ -311,11 +311,12 @@ export const recipeRating = pgTable(
  * A saved ingredient for the add-to-shopping-list autocomplete (distinct from
  * {@link ingredient}, which holds a recipe's ingredient lines). Two kinds of
  * rows coexist, told apart by {@link scopeId}:
- *   - **stock** (`scope_id` NULL): curated ingredients that belong to no one,
- *     seeded into the DB; visible to everyone.
- *   - **household** (`scope_id` = household id): ingredients a member typed in
- *     that the autocomplete didn't already know, visible only within that
- *     household. A household row with the same name shadows a stock row.
+ *   - **template** (`scope_id` NULL): the admin-curated starter set. Never shown
+ *     to households directly — it's copied into a household's scope when the
+ *     household first uses the catalog (see {@link catalogSeed}), and again on an
+ *     explicit reset.
+ *   - **household** (`scope_id` = household id): the rows a household actually
+ *     sees and edits — its copy of the templates plus anything it added itself.
  *
  * {@link category} groups the ingredient under a header on the shopping list
  * (see `src/lib/categories.ts`). {@link nameKey} is the lower-cased name used for
@@ -361,11 +362,11 @@ export const ingredientCatalog = pgTable(
 
 /**
  * Categories that persist on their own (independently of whether any ingredient
- * currently uses them). The full set of categories a household sees is the
- * canonical list in `src/lib/categories.ts` ∪ the global rows (`scope_id` NULL)
- * ∪ that household's own rows ∪ whatever categories appear on the
- * {@link ingredientCatalog} rows visible to it. Global rows are admin-curated
- * templates; household rows are scoped and managed on `/ingredienser`.
+ * currently uses them). Same template model as {@link ingredientCatalog}:
+ * `scope_id` NULL = an admin-curated template (the canonical list in
+ * `src/lib/categories.ts` plus admin-created ones), copied into a household's
+ * scope on first use / reset. A household sees and manages only its own rows
+ * (∪ categories used by its catalog rows) on `/ingredienser`.
  */
 export const ingredientCategory = pgTable(
   'ingredient_category',
@@ -389,6 +390,22 @@ export const ingredientCategory = pgTable(
       .where(sql`scope_id is not null`),
   ],
 )
+
+/**
+ * Marks a household scope whose catalog has been initialized from the templates
+ * (stock {@link ingredientCatalog} rows + global {@link ingredientCategory}
+ * rows). Seeding happens once per scope — lazily on first catalog read — and the
+ * marker keeps a household that deliberately emptied its catalog from being
+ * re-seeded. Re-copying the templates afterwards is an explicit, user-confirmed
+ * reset on `/ingredienser`.
+ */
+export const catalogSeed = pgTable('catalog_seed', {
+  /** The household scope id (see {@link householdMember}). */
+  scopeId: text('scope_id').primaryKey(),
+  createdAt: timestamp('created_at')
+    .$defaultFn(() => new Date())
+    .notNull(),
+})
 
 /* -------------------------------------------------------------------------- */
 /*  Relations                                                                 */

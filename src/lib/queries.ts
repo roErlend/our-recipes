@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 
 import { withOfflineCache } from '@/lib/offline'
-import { adminListIngredients } from '@/server/admin'
+import { adminListCategories, adminListIngredients } from '@/server/admin'
 import {
   listCategories,
   listHouseholdCatalog,
@@ -68,21 +68,28 @@ export const pendingInvitesQueryOptions = () =>
     queryFn: () => getPendingInvites(),
   })
 
-/** Admin-only: the full ingredient catalog for cleanup/editing. */
+/** Admin-only: the template ingredients for curation. */
 export const adminIngredientsQueryOptions = () =>
   queryOptions({
     queryKey: ['admin', 'ingredients'] as const,
     queryFn: () => adminListIngredients(),
   })
 
-/** The household's catalog (stock + own) for the /ingredienser management page. */
+/** Admin-only: the template categories for curation. */
+export const adminCategoriesQueryOptions = () =>
+  queryOptions({
+    queryKey: ['admin', 'categories'] as const,
+    queryFn: () => adminListCategories(),
+  })
+
+/** The household's own catalog for the /ingredienser management page. */
 export const householdCatalogQueryOptions = () =>
   queryOptions({
     queryKey: ['household', 'catalog'] as const,
     queryFn: () => listHouseholdCatalog(),
   })
 
-/** The household's categories (global templates + own) for /ingredienser. */
+/** The household's own categories for /ingredienser. */
 export const householdCategoriesQueryOptions = () =>
   queryOptions({
     queryKey: ['household', 'categories'] as const,

@@ -21,10 +21,8 @@ import { ComboBox } from '@/components/ui/ComboBox'
 import { isAdminEmail } from '@/lib/admin'
 import { categoryRank, DEFAULT_CATEGORY } from '@/lib/categories'
 import {
+  adminCategoriesQueryOptions,
   adminIngredientsQueryOptions,
-  categoriesQueryOptions,
-  ingredientsQueryOptions,
-  shoppingQueryOptions,
 } from '@/lib/queries'
 import {
   adminCreateCategory,
@@ -45,27 +43,29 @@ export const Route = createFileRoute('/_authed/admin')({
   loader: ({ context }) =>
     Promise.all([
       context.queryClient.ensureQueryData(adminIngredientsQueryOptions()),
-      context.queryClient.ensureQueryData(categoriesQueryOptions()),
+      context.queryClient.ensureQueryData(adminCategoriesQueryOptions()),
     ]),
   component: AdminPage,
 })
 
-/** Invalidate everything that depends on the catalog after an admin change. */
+/**
+ * Invalidate the template queries after an admin change. Template edits don't
+ * reach households directly (they own their copies), so household-facing keys
+ * don't need to refetch here.
+ */
 function useAdminInvalidate() {
   const queryClient = useQueryClient()
   return () => {
     queryClient.invalidateQueries({ queryKey: adminIngredientsQueryOptions().queryKey })
-    queryClient.invalidateQueries({ queryKey: ingredientsQueryOptions().queryKey })
-    queryClient.invalidateQueries({ queryKey: categoriesQueryOptions().queryKey })
-    queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
+    queryClient.invalidateQueries({ queryKey: adminCategoriesQueryOptions().queryKey })
   }
 }
 
 function AdminPage() {
   const { data: ingredients } = useSuspenseQuery(adminIngredientsQueryOptions())
-  const { data: baseCategories } = useSuspenseQuery(categoriesQueryOptions())
+  const { data: baseCategories } = useSuspenseQuery(adminCategoriesQueryOptions())
 
-  // All category names = canonical/admin-created ∪ any used on rows.
+  // All template category names = canonical/admin-created ∪ any used on rows.
   const categories = useMemo(() => {
     const set = new Set<string>(baseCategories)
     for (const i of ingredients) set.add(i.category)
@@ -81,7 +81,8 @@ function AdminPage() {
         <div>
           <h1 className="text-2xl font-bold text-stone-900">Admin</h1>
           <p className="text-sm text-stone-500">
-            Rydd i ingredienser og kategorier.
+            Rediger malene for ingredienser og kategorier. Husholdninger får en
+            kopi når de tas i bruk – og kan hente malene på nytt selv.
           </p>
         </div>
       </div>
@@ -483,15 +484,6 @@ function IngredientRow({
         >
           <Home className="h-4 w-4" />
         </button>
-        {ingredient.isStock ? (
-          <span className="shrink-0 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
-            standard
-          </span>
-        ) : (
-          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
-            egen
-          </span>
-        )}
         <IconButton
           label={`Lagre ${ingredient.name}`}
           onClick={() => onSave(name.trim(), category.trim(), staple)}

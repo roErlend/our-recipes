@@ -1,9 +1,9 @@
 import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
-import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '@/db'
-import { ingredientCatalog, ingredientCategory } from '@/db/schema'
+import { catalogSeed, ingredientCatalog, ingredientCategory } from '@/db/schema'
 import {
   categoryRank,
   DEFAULT_CATEGORY,
@@ -20,8 +20,6 @@ export interface CatalogIngredient {
   /** Lower-cased lookup key, used for client-side filtering/ranking. */
   key: string
   category: string
-  /** True for the household's own saved ingredients (vs. shared stock). */
-  isHousehold: boolean
   /** A pantry staple the household (almost) always has — kept off the "to buy" list. */
   isStaple: boolean
 }
@@ -53,94 +51,135 @@ export function filterIngredients(
     .slice(0, limit)
 }
 
+/* ------------------------------ template seeding -------------------------- */
+
 /**
- * Catalog entries visible to a household: every stock row plus the household's
- * own rows, keyed by name with the household row shadowing a stock row of the
- * same name. Returns a Map of nameKey -> { name, category, isHousehold }.
- * Server-only; shared by the autocomplete and the shopping-list categorization.
+ * Copy every template (stock) ingredient into a household's scope. Existing
+ * household rows win (`onConflictDoNothing` on the scope unique index), so this
+ * is safe both for first-use seeding and for a reset re-copy after the wipe.
+ * Server-only; runs inside the caller's transaction.
+ */
+export const seedScopeIngredients = createServerOnlyFn(
+  async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], householdId: string) => {
+    const templates = await tx
+      .select({
+        name: ingredientCatalog.name,
+        nameKey: ingredientCatalog.nameKey,
+        category: ingredientCatalog.category,
+        staple: ingredientCatalog.staple,
+      })
+      .from(ingredientCatalog)
+      .where(isNull(ingredientCatalog.scopeId))
+    if (!templates.length) return
+    await tx
+      .insert(ingredientCatalog)
+      .values(templates.map((t) => ({ ...t, scopeId: householdId })))
+      .onConflictDoNothing()
+  },
+)
+
+/**
+ * Copy every template category (the canonical list ∪ global rows) into a
+ * household's scope. Existing household rows win. Server-only; runs inside the
+ * caller's transaction.
+ */
+export const seedScopeCategories = createServerOnlyFn(
+  async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], householdId: string) => {
+    const globals = await tx
+      .select({ name: ingredientCategory.name })
+      .from(ingredientCategory)
+      .where(isNull(ingredientCategory.scopeId))
+    const names = new Set<string>(INGREDIENT_CATEGORIES)
+    for (const g of globals) names.add(g.name)
+    await tx
+      .insert(ingredientCategory)
+      .values([...names].map((name) => ({ name, scopeId: householdId })))
+      .onConflictDoNothing()
+  },
+)
+
+/**
+ * Initialize a household's catalog from the templates exactly once (a brand-new
+ * scope has nothing yet). The `catalog_seed` marker makes this a cheap SELECT on
+ * every later call — and keeps a household that deliberately emptied its catalog
+ * from being silently re-seeded. Called at the top of every catalog read.
+ */
+export const ensureScopeSeeded = createServerOnlyFn(
+  async (householdId: string) => {
+    const [seeded] = await db
+      .select({ scopeId: catalogSeed.scopeId })
+      .from(catalogSeed)
+      .where(eq(catalogSeed.scopeId, householdId))
+      .limit(1)
+    if (seeded) return
+    await db.transaction(async (tx) => {
+      await seedScopeIngredients(tx, householdId)
+      await seedScopeCategories(tx, householdId)
+      await tx
+        .insert(catalogSeed)
+        .values({ scopeId: householdId })
+        .onConflictDoNothing()
+    })
+  },
+)
+
+/* ------------------------------ catalog reads ----------------------------- */
+
+/**
+ * The catalog a household sees: its **own rows only** (its copy of the templates
+ * plus whatever it added — template rows are never read directly). Returns a Map
+ * of nameKey -> { name, category, isStaple }. Server-only; shared by the
+ * autocomplete and the shopping-list categorization.
  */
 export const catalogForScope = createServerOnlyFn(async (householdId: string) => {
+  await ensureScopeSeeded(householdId)
   const rows = await db
     .select({
-      scopeId: ingredientCatalog.scopeId,
       name: ingredientCatalog.name,
       nameKey: ingredientCatalog.nameKey,
       category: ingredientCatalog.category,
       staple: ingredientCatalog.staple,
     })
     .from(ingredientCatalog)
-    .where(
-      or(
-        isNull(ingredientCatalog.scopeId),
-        eq(ingredientCatalog.scopeId, householdId),
-      ),
-    )
+    .where(eq(ingredientCatalog.scopeId, householdId))
 
-  const byKey = new Map<
-    string,
-    { name: string; category: string; isHousehold: boolean; isStaple: boolean }
-  >()
+  const byKey = new Map<string, { name: string; category: string; isStaple: boolean }>()
   for (const r of rows) {
-    const isHousehold = r.scopeId != null
-    const existing = byKey.get(r.nameKey)
-    // Household rows win over stock rows of the same name.
-    if (!existing || (isHousehold && !existing.isHousehold)) {
-      byKey.set(r.nameKey, {
-        name: r.name,
-        category: normalizeCategory(r.category),
-        isHousehold,
-        isStaple: r.staple,
-      })
-    }
+    byKey.set(r.nameKey, {
+      name: r.name,
+      category: normalizeCategory(r.category),
+      isStaple: r.staple,
+    })
   }
   return byKey
 })
 
 /**
- * Persist a category as a first-class row so it survives independently of any
- * ingredient using it. No-op for canonical categories (they always exist).
- * Server-only; called whenever any ingredient is filed under a category.
+ * Persist a **global template** category row so it survives independently of any
+ * ingredient using it. No-op for canonical categories (they're always part of
+ * the template set). Server-only; used by the admin template editor.
  */
 export const ensureCategoryRow = createServerOnlyFn(
-  async (
-    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-    name: string,
-    scopeId: string | null = null,
-  ) => {
+  async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], name: string) => {
     const trimmed = name.trim()
     if (!trimmed || isCanonicalCategory(trimmed)) return
     await tx
       .insert(ingredientCategory)
-      .values({ name: trimmed, scopeId })
+      .values({ name: trimmed, scopeId: null })
       .onConflictDoNothing()
   },
 )
 
 /**
- * Ensure a household-scoped category row exists for a category a household is
- * using — but only when it's genuinely household-specific. Skips canonical
- * categories and ones that already exist as a global (admin) row, so a household
- * only accrues rows for categories it actually invented. Server-only.
+ * Ensure a household-scoped category row exists for a category the household is
+ * using. Households own their whole category set (seeded from the templates), so
+ * this inserts unconditionally — including for canonical names a household may
+ * have deleted and is now re-introducing. Server-only.
  */
 export const ensureHouseholdCategoryRow = createServerOnlyFn(
-  async (
-    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-    name: string,
-    householdId: string,
-  ) => {
+  async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], name: string, householdId: string) => {
     const trimmed = name.trim()
-    if (!trimmed || isCanonicalCategory(trimmed)) return
-    const [globalRow] = await tx
-      .select({ name: ingredientCategory.name })
-      .from(ingredientCategory)
-      .where(
-        and(
-          eq(ingredientCategory.name, trimmed),
-          isNull(ingredientCategory.scopeId),
-        ),
-      )
-      .limit(1)
-    if (globalRow) return
+    if (!trimmed) return
     await tx
       .insert(ingredientCategory)
       .values({ name: trimmed, scopeId: householdId })
@@ -149,39 +188,27 @@ export const ensureHouseholdCategoryRow = createServerOnlyFn(
 )
 
 /**
- * All category names available app-wide: the canonical list ∪ first-class
- * categories ({@link ingredientCategory}) ∪ any category currently used by an
- * ingredient — so every category is first-class regardless of who created it.
- * Ordered the way the shopping list groups them.
+ * All category names available to the current household: its own category rows
+ * ∪ any category currently used by its catalog rows (so nothing a household
+ * relies on can disappear from pickers). Ordered the way the shopping list
+ * groups them.
  */
 export const listCategories = createServerFn({ method: 'GET' }).handler(
   async (): Promise<string[]> => {
     const user = await requireUser()
     const { householdId } = await accessibleScope(user.id)
-    // Categories visible to this household: canonical ∪ global (admin) + its own
-    // category rows ∪ categories used by the catalog rows it can see (stock +
-    // its own). Another household's private categories never appear here.
+    await ensureScopeSeeded(householdId)
     const [named, used] = await Promise.all([
       db
         .select({ name: ingredientCategory.name })
         .from(ingredientCategory)
-        .where(
-          or(
-            isNull(ingredientCategory.scopeId),
-            eq(ingredientCategory.scopeId, householdId),
-          ),
-        ),
+        .where(eq(ingredientCategory.scopeId, householdId)),
       db
         .selectDistinct({ category: ingredientCatalog.category })
         .from(ingredientCatalog)
-        .where(
-          or(
-            isNull(ingredientCatalog.scopeId),
-            eq(ingredientCatalog.scopeId, householdId),
-          ),
-        ),
+        .where(eq(ingredientCatalog.scopeId, householdId)),
     ])
-    const set = new Set<string>(INGREDIENT_CATEGORIES)
+    const set = new Set<string>([DEFAULT_CATEGORY])
     for (const r of named) set.add(r.name)
     for (const r of used) if (r.category) set.add(r.category)
     return [...set].sort(
@@ -191,9 +218,9 @@ export const listCategories = createServerFn({ method: 'GET' }).handler(
 )
 
 /**
- * The full ingredient catalog visible to the current household (stock +
- * household), for the add-box autocomplete. Preloaded and cached via TanStack
- * Query, then filtered client-side with {@link filterIngredients}.
+ * The full ingredient catalog of the current household, for the add-box
+ * autocomplete. Preloaded and cached via TanStack Query, then filtered
+ * client-side with {@link filterIngredients}.
  */
 export const listIngredients = createServerFn({ method: 'GET' }).handler(
   async (): Promise<CatalogIngredient[]> => {
@@ -210,66 +237,55 @@ export const listIngredients = createServerFn({ method: 'GET' }).handler(
 /**
  * Save an ingredient to the household catalog (idempotent). Used when the user
  * types a name the autocomplete didn't find and chooses a category for it.
- * Updates the category if a household row already exists; leaves stock rows
- * untouched (a differing category becomes a household override). Server-only —
- * called from `addManualItem`, not exposed as its own endpoint.
+ * Updates the category if the row already exists. Server-only — called from
+ * `addManualItem`, not exposed as its own endpoint.
  */
 export const saveHouseholdIngredient = createServerOnlyFn(
-  async (
-    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-    householdId: string,
-    name: string,
-    category: string,
-  ) => {
+  async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], householdId: string, name: string, category: string) => {
     const key = nameKey(name)
     if (!key) return
     const cat = normalizeCategory(category)
 
-  const [existing] = await tx
-    .select({ id: ingredientCatalog.id })
-    .from(ingredientCatalog)
-    .where(
-      and(
-        eq(ingredientCatalog.scopeId, householdId),
-        eq(ingredientCatalog.nameKey, key),
-      ),
-    )
-    .limit(1)
+    const [existing] = await tx
+      .select({ id: ingredientCatalog.id })
+      .from(ingredientCatalog)
+      .where(
+        and(
+          eq(ingredientCatalog.scopeId, householdId),
+          eq(ingredientCatalog.nameKey, key),
+        ),
+      )
+      .limit(1)
 
-  if (existing) {
-    await tx
-      .update(ingredientCatalog)
-      .set({ category: cat })
-      .where(eq(ingredientCatalog.id, existing.id))
-  } else {
-    await tx.insert(ingredientCatalog).values({
-      scopeId: householdId,
-      name: name.trim(),
-      nameKey: key,
-      category: cat,
-    })
-  }
+    if (existing) {
+      await tx
+        .update(ingredientCatalog)
+        .set({ category: cat })
+        .where(eq(ingredientCatalog.id, existing.id))
+    } else {
+      await tx.insert(ingredientCatalog).values({
+        scopeId: householdId,
+        name: name.trim(),
+        nameKey: key,
+        category: cat,
+      })
+    }
 
-  // Make the chosen category first-class for this household (if it's a new,
-  // household-specific one — canonical/global categories are left alone).
-  await ensureHouseholdCategoryRow(tx, cat, householdId)
-})
+    // Make the chosen category first-class for this household.
+    await ensureHouseholdCategoryRow(tx, cat, householdId)
+  },
+)
 
 /**
- * Ensure every given ingredient name exists in the catalog for this household,
- * creating a household-scoped row (with a {@link guessIngredientCategory}
- * category) for any that don't — stock and existing household rows are left
- * untouched. Used when saving a recipe so its ingredients (especially imported
- * ones) feed the shopping-list autocomplete and get a sensible category. Names
- * are deduped; blanks are skipped. Server-only; runs inside the caller's
- * transaction.
+ * Ensure every given ingredient name exists in the household's catalog, creating
+ * a row (with a {@link guessIngredientCategory} category) for any that don't —
+ * existing rows are left untouched. Used when saving a recipe so its ingredients
+ * (especially imported ones) feed the shopping-list autocomplete and get a
+ * sensible category. Names are deduped; blanks are skipped. Server-only; runs
+ * inside the caller's transaction.
  */
 export const ensureCatalogIngredients = createServerOnlyFn(
-  async (
-    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-    householdId: string,
-    names: string[],
-  ) => {
+  async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], householdId: string, names: string[]) => {
     const byKey = new Map<string, string>()
     for (const raw of names) {
       const name = raw.trim()
@@ -278,17 +294,14 @@ export const ensureCatalogIngredients = createServerOnlyFn(
     }
     if (!byKey.size) return
 
-    // Skip names already known to this household (its own rows or shared stock).
+    // Skip names the household's catalog already knows.
     const existing = await tx
       .select({ nameKey: ingredientCatalog.nameKey })
       .from(ingredientCatalog)
       .where(
         and(
           inArray(ingredientCatalog.nameKey, [...byKey.keys()]),
-          or(
-            isNull(ingredientCatalog.scopeId),
-            eq(ingredientCatalog.scopeId, householdId),
-          ),
+          eq(ingredientCatalog.scopeId, householdId),
         ),
       )
     const existingKeys = new Set(existing.map((r) => r.nameKey))
@@ -315,63 +328,42 @@ export interface HouseholdCatalogRow {
   name: string
   category: string
   staple: boolean
-  /** 'stock' = a shared global template; 'household' = this household's own row. */
-  origin: 'stock' | 'household'
 }
 
 /**
- * The catalog as a household manages it: one row per name, a household copy
- * shadowing a stock template, each tagged with its origin and the id to edit.
+ * The catalog as the household manages it: every row belongs to the household
+ * (its copy of the templates plus its own additions), so everything is editable
+ * and deletable.
  */
 export const listHouseholdCatalog = createServerFn({ method: 'GET' }).handler(
   async (): Promise<HouseholdCatalogRow[]> => {
     const user = await requireUser()
     const { householdId } = await accessibleScope(user.id)
+    await ensureScopeSeeded(householdId)
     const rows = await db
       .select({
         id: ingredientCatalog.id,
-        scopeId: ingredientCatalog.scopeId,
         name: ingredientCatalog.name,
-        nameKey: ingredientCatalog.nameKey,
         category: ingredientCatalog.category,
         staple: ingredientCatalog.staple,
       })
       .from(ingredientCatalog)
-      .where(
-        or(
-          isNull(ingredientCatalog.scopeId),
-          eq(ingredientCatalog.scopeId, householdId),
-        ),
-      )
+      .where(eq(ingredientCatalog.scopeId, householdId))
 
-    const byKey = new Map<string, HouseholdCatalogRow>()
-    for (const r of rows) {
-      const isHousehold = r.scopeId != null
-      const existing = byKey.get(r.nameKey)
-      // Household rows win over the stock template of the same name.
-      if (!existing || (isHousehold && existing.origin === 'stock')) {
-        byKey.set(r.nameKey, {
-          id: r.id,
-          name: r.name,
-          category: normalizeCategory(r.category),
-          staple: r.staple,
-          origin: isHousehold ? 'household' : 'stock',
-        })
-      }
-    }
-    return [...byKey.values()].sort(
-      (a, b) =>
-        a.category.localeCompare(b.category, 'nb') ||
-        a.name.localeCompare(b.name, 'nb'),
-    )
+    return rows
+      .map((r) => ({ ...r, category: normalizeCategory(r.category) }))
+      .sort(
+        (a, b) =>
+          a.category.localeCompare(b.category, 'nb') ||
+          a.name.localeCompare(b.name, 'nb'),
+      )
   },
 )
 
 /**
- * Create or edit a household ingredient. Editing a **stock** template forks a
- * private household copy (copy-on-write) — the global row is never mutated;
- * editing an **own** row updates it in place (rename allowed). Pass `id: null`
- * to create a brand-new household ingredient.
+ * Create or edit a household ingredient. Every row on `/ingredienser` is the
+ * household's own, so edits happen in place (rename allowed). Pass `id: null`
+ * to create a new ingredient.
  */
 export const saveHouseholdCatalogItem = createServerFn({ method: 'POST' })
   .validator((input: unknown) =>
@@ -388,58 +380,51 @@ export const saveHouseholdCatalogItem = createServerFn({ method: 'POST' })
     const user = await requireUser()
     const { householdId } = await accessibleScope(user.id)
     const category = normalizeCategory(data.category)
+    const displayName = data.name.trim()
+    const key = nameKey(displayName)
 
     await db.transaction(async (tx) => {
-      let displayName = data.name.trim()
-      let key = nameKey(displayName)
-
       if (data.id) {
         const [row] = await tx
-          .select()
+          .select({ id: ingredientCatalog.id, scopeId: ingredientCatalog.scopeId, nameKey: ingredientCatalog.nameKey })
           .from(ingredientCatalog)
           .where(eq(ingredientCatalog.id, data.id))
           .limit(1)
-        if (!row) throw new Error('Ingrediensen finnes ikke')
-
-        if (row.scopeId === householdId) {
-          // Editing our own row — update in place, rename allowed.
-          if (key !== row.nameKey) {
-            const [clash] = await tx
-              .select({ id: ingredientCatalog.id })
-              .from(ingredientCatalog)
-              .where(
-                and(
-                  eq(ingredientCatalog.scopeId, householdId),
-                  eq(ingredientCatalog.nameKey, key),
-                  ne(ingredientCatalog.id, row.id),
-                ),
-              )
-              .limit(1)
-            if (clash) throw new Error('Ingrediensen finnes allerede')
-          }
-          await tx
-            .update(ingredientCatalog)
-            .set({
-              name: displayName,
-              nameKey: key,
-              category,
-              ...(data.staple === undefined ? {} : { staple: data.staple }),
-            })
-            .where(eq(ingredientCatalog.id, row.id))
-          await ensureHouseholdCategoryRow(tx, category, householdId)
-          return
+        // Only the household's own rows are reachable/editable here — template
+        // rows and other households' rows are off-limits.
+        if (!row || row.scopeId !== householdId) {
+          throw new Error('Ingrediensen finnes ikke')
         }
 
-        if (row.scopeId != null) {
-          // A row from another household — should be unreachable via the UI.
-          throw new Error('Utilgjengelig ingrediens')
+        if (key !== row.nameKey) {
+          const [clash] = await tx
+            .select({ id: ingredientCatalog.id })
+            .from(ingredientCatalog)
+            .where(
+              and(
+                eq(ingredientCatalog.scopeId, householdId),
+                eq(ingredientCatalog.nameKey, key),
+                ne(ingredientCatalog.id, row.id),
+              ),
+            )
+            .limit(1)
+          if (clash) throw new Error('Ingrediensen finnes allerede')
         }
-        // Forking a stock template: keep its name/key, override category/staple.
-        displayName = row.name
-        key = row.nameKey
+        await tx
+          .update(ingredientCatalog)
+          .set({
+            name: displayName,
+            nameKey: key,
+            category,
+            ...(data.staple === undefined ? {} : { staple: data.staple }),
+          })
+          .where(eq(ingredientCatalog.id, row.id))
+        await ensureHouseholdCategoryRow(tx, category, householdId)
+        return
       }
 
-      // Upsert the household row (new ingredient, or a fork of a stock template).
+      // New ingredient — upsert by name so re-adding an existing one just
+      // updates it instead of failing on the unique index.
       const [existing] = await tx
         .select({ id: ingredientCatalog.id })
         .from(ingredientCatalog)
@@ -474,9 +459,9 @@ export const saveHouseholdCatalogItem = createServerFn({ method: 'POST' })
   })
 
 /**
- * Delete a household's **own** catalog ingredient. Reverts to the stock template
- * if one exists (same name). Never touches stock or another household's rows —
- * the scope check guarantees a household can only remove what it created.
+ * Delete one of the household's catalog ingredients. The scope check guarantees
+ * a household can only remove its own rows — never a template or another
+ * household's. A reset brings back anything that came from the templates.
  */
 export const deleteHouseholdCatalogItem = createServerFn({ method: 'POST' })
   .validator((input: unknown) => z.object({ id: z.string().min(1) }).parse(input))
@@ -490,7 +475,7 @@ export const deleteHouseholdCatalogItem = createServerFn({ method: 'POST' })
       .limit(1)
     if (!row) throw new Error('Ingrediensen finnes ikke')
     if (row.scopeId !== householdId) {
-      throw new Error('Du kan bare slette egne ingredienser')
+      throw new Error('Du kan bare slette husholdningens egne ingredienser')
     }
     await db.delete(ingredientCatalog).where(eq(ingredientCatalog.id, data.id))
     return { ok: true }
@@ -498,62 +483,41 @@ export const deleteHouseholdCatalogItem = createServerFn({ method: 'POST' })
 
 export interface HouseholdCategoryRow {
   name: string
-  /** 'global' = canonical/admin template (read-only here); 'household' = own. */
-  origin: 'global' | 'household'
-  /** How many of this household's own ingredients use it. */
+  /** How many of the household's ingredients use it. */
   count: number
 }
 
 /**
- * Categories as a household manages them: canonical + global (admin) templates
- * (read-only) plus the household's own categories, each with a count of the
- * household's own ingredients using it.
+ * Categories as the household manages them: its own rows plus any category its
+ * catalog rows still use (e.g. after a categories reset), each with a count of
+ * the household's ingredients using it.
  */
 export const listHouseholdCategories = createServerFn({ method: 'GET' }).handler(
   async (): Promise<HouseholdCategoryRow[]> => {
     const user = await requireUser()
     const { householdId } = await accessibleScope(user.id)
-    const [catRows, householdItems] = await Promise.all([
+    await ensureScopeSeeded(householdId)
+    const [catRows, items] = await Promise.all([
       db
-        .select({
-          name: ingredientCategory.name,
-          scopeId: ingredientCategory.scopeId,
-        })
+        .select({ name: ingredientCategory.name })
         .from(ingredientCategory)
-        .where(
-          or(
-            isNull(ingredientCategory.scopeId),
-            eq(ingredientCategory.scopeId, householdId),
-          ),
-        ),
+        .where(eq(ingredientCategory.scopeId, householdId)),
       db
         .select({ category: ingredientCatalog.category })
         .from(ingredientCatalog)
         .where(eq(ingredientCatalog.scopeId, householdId)),
     ])
 
-    const globalNames = new Set<string>(INGREDIENT_CATEGORIES)
-    const householdNames = new Set<string>()
-    for (const r of catRows) {
-      if (r.scopeId == null) globalNames.add(r.name)
-      else householdNames.add(r.name)
-    }
     const counts = new Map<string, number>()
-    for (const r of householdItems) {
+    for (const r of items) {
       const c = normalizeCategory(r.category)
       counts.set(c, (counts.get(c) ?? 0) + 1)
-      if (!globalNames.has(c)) householdNames.add(c)
     }
+    const names = new Set<string>([DEFAULT_CATEGORY, ...counts.keys()])
+    for (const r of catRows) names.add(r.name)
 
-    const all = new Set<string>([...globalNames, ...householdNames])
-    return [...all]
-      .map((name) => ({
-        name,
-        origin: (globalNames.has(name) ? 'global' : 'household') as
-          | 'global'
-          | 'household',
-        count: counts.get(name) ?? 0,
-      }))
+    return [...names]
+      .map((name) => ({ name, count: counts.get(name) ?? 0 }))
       .sort(
         (a, b) =>
           categoryRank(a.name) - categoryRank(b.name) ||
@@ -562,7 +526,7 @@ export const listHouseholdCategories = createServerFn({ method: 'GET' }).handler
   },
 )
 
-/** Create a household-scoped category (no-op for canonical/global names). */
+/** Create a household category (idempotent). */
 export const createHouseholdCategory = createServerFn({ method: 'POST' })
   .validator((input: unknown) =>
     z.object({ name: z.string().trim().min(1).max(60) }).parse(input),
@@ -577,9 +541,9 @@ export const createHouseholdCategory = createServerFn({ method: 'POST' })
   })
 
 /**
- * Rename one of the household's **own** categories: retags only this household's
- * ingredients and moves its own category row. Global/canonical categories are
- * templates and can't be renamed here.
+ * Rename one of the household's categories: retags the household's ingredients
+ * and swaps the category row. Renaming onto an existing category merges into it.
+ * Only this household is affected.
  */
 export const renameHouseholdCategory = createServerFn({ method: 'POST' })
   .validator((input: unknown) =>
@@ -594,22 +558,7 @@ export const renameHouseholdCategory = createServerFn({ method: 'POST' })
     const user = await requireUser()
     const { householdId } = await accessibleScope(user.id)
     const to = data.to.trim()
-    if (isCanonicalCategory(data.from)) {
-      throw new Error('Globale kategorier kan ikke endres')
-    }
     await db.transaction(async (tx) => {
-      const [globalRow] = await tx
-        .select({ name: ingredientCategory.name })
-        .from(ingredientCategory)
-        .where(
-          and(
-            eq(ingredientCategory.name, data.from),
-            isNull(ingredientCategory.scopeId),
-          ),
-        )
-        .limit(1)
-      if (globalRow) throw new Error('Globale kategorier kan ikke endres')
-
       await tx
         .update(ingredientCatalog)
         .set({ category: to })
@@ -633,9 +582,10 @@ export const renameHouseholdCategory = createServerFn({ method: 'POST' })
   })
 
 /**
- * Delete one of the household's **own** categories: reassigns this household's
- * ingredients under it to the default and drops its category row. Global/
- * canonical categories can't be deleted here. No ingredient is deleted.
+ * Delete one of the household's categories: reassigns the household's
+ * ingredients under it to the default and drops the category row. The default
+ * category itself can't be deleted (it's the reassignment target). No ingredient
+ * is deleted.
  */
 export const deleteHouseholdCategory = createServerFn({ method: 'POST' })
   .validator((input: unknown) =>
@@ -644,22 +594,10 @@ export const deleteHouseholdCategory = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const user = await requireUser()
     const { householdId } = await accessibleScope(user.id)
-    if (isCanonicalCategory(data.name)) {
-      throw new Error('Globale kategorier kan ikke slettes')
+    if (data.name === DEFAULT_CATEGORY) {
+      throw new Error('Kan ikke slette standardkategorien')
     }
     await db.transaction(async (tx) => {
-      const [globalRow] = await tx
-        .select({ name: ingredientCategory.name })
-        .from(ingredientCategory)
-        .where(
-          and(
-            eq(ingredientCategory.name, data.name),
-            isNull(ingredientCategory.scopeId),
-          ),
-        )
-        .limit(1)
-      if (globalRow) throw new Error('Globale kategorier kan ikke slettes')
-
       await tx
         .update(ingredientCatalog)
         .set({ category: DEFAULT_CATEGORY })
@@ -680,5 +618,47 @@ export const deleteHouseholdCategory = createServerFn({ method: 'POST' })
     })
     return { name: data.name }
   })
+
+/* ------------------------------ template resets --------------------------- */
+
+/**
+ * Replace the household's entire ingredient list with a fresh copy of the
+ * templates. **Destructive**: the household's own additions and edits are gone
+ * afterwards — the UI gates this behind an explicit confirmation.
+ */
+export const resetHouseholdCatalog = createServerFn({ method: 'POST' }).handler(
+  async () => {
+    const user = await requireUser()
+    const { householdId } = await accessibleScope(user.id)
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(ingredientCatalog)
+        .where(eq(ingredientCatalog.scopeId, householdId))
+      await seedScopeIngredients(tx, householdId)
+    })
+    return { ok: true }
+  },
+)
+
+/**
+ * Replace the household's categories with a fresh copy of the templates.
+ * **Destructive** for the category list (own categories disappear) — the UI
+ * gates this behind an explicit confirmation. Ingredients keep the category
+ * text they had; a now-template-less category lives on as a "used" category
+ * until its ingredients are re-filed.
+ */
+export const resetHouseholdCategories = createServerFn({ method: 'POST' }).handler(
+  async () => {
+    const user = await requireUser()
+    const { householdId } = await accessibleScope(user.id)
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(ingredientCategory)
+        .where(eq(ingredientCategory.scopeId, householdId))
+      await seedScopeCategories(tx, householdId)
+    })
+    return { ok: true }
+  },
+)
 
 export { DEFAULT_CATEGORY }

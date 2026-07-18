@@ -23,6 +23,13 @@ grep -rl "drizzle-orm\|perf_hooks\|from \"postgres\"" .output/public/   # expect
 ever get used from server contexts or pull server fns in a tree-shakeable way.
 Don't add a top-level `db` import to a `lib` file.
 
+**Type-only references count.** A module-scope type alias like
+`type Tx = Parameters<typeof db.transaction>[0]` in a `src/server/*` file
+defeats the compiler's dead-code elimination and pulls `postgres` into the
+client build, even though TypeScript erases the alias. Write the `typeof db…`
+expression **inline in the server-only fn's parameter list** instead (see
+`src/server/ingredients.ts`) — inside the stripped function body it's harmless.
+
 ## `useLiveQuery` is client-only
 
 It calls `startSyncImmediate()` during render with no server snapshot, so it

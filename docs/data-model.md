@@ -100,30 +100,33 @@ key, sum quantities, resolve category, attach checked state).
 `ingredient_catalog` powers the add-box autocomplete and the shopping list's
 category grouping. Two kinds of rows, distinguished by `scope_id`:
 
-- **stock** (`scope_id` NULL) — curated, seeded ingredients visible to everyone
-  (`pnpm db:seed`).
-- **household** (`scope_id` = household id) — ingredients a member typed that the
-  autocomplete didn't know. A household row **shadows** a stock row of the same name.
+- **template** (`scope_id` NULL) — the admin-curated starter set (`pnpm db:seed`,
+  edited on `/admin`). Households never read templates directly.
+- **household** (`scope_id` = household id) — the rows a household actually sees:
+  its private copy of the templates plus everything it added or edited itself.
 
-**Copy-on-write (`/ingredienser`).** Households manage their catalog on the
-`/ingredienser` page (all users; `src/routes/_authed/ingredienser.tsx`). Stock
-rows are read-only **templates**: editing one (`saveHouseholdCatalogItem`) forks
-a household-scoped copy, never mutating the stock row. A household can rename /
-delete only its **own** rows (`deleteHouseholdCatalogItem` verifies
-`scope_id === householdId`); deleting a fork reverts to the stock template.
-`/admin` still curates the global stock (admin-only). The old
-`saveHouseholdIngredient` (shopping add-box) forks the same way for category.
+**Template copy model.** A household's catalog is initialized as a full **copy**
+of the templates the first time the household touches the catalog
+(`ensureScopeSeeded` in `src/server/ingredients.ts`; the `catalog_seed` marker
+table makes this once-per-scope). From then on the household owns every row
+outright — `/ingredienser` (`src/routes/_authed/ingredienser.tsx`, all users)
+edits, renames and deletes freely, always scoped by `householdId`. Later admin
+changes to the templates do **not** propagate; a household pulls a fresh copy
+via the **reset** buttons on `/ingredienser` (`resetHouseholdCatalog` /
+`resetHouseholdCategories` — destructive, confirmation-gated: they wipe the
+household's rows and re-copy the templates). Migration `0004` backfilled the
+copy into every scope that existed at the switch (additive, `ON CONFLICT DO
+NOTHING`, existing household rows won).
 
-`ingredient_category` is **also scope-aware** (like the catalog): `scope_id` NULL
-= global (canonical/admin template), else a household's own category. Partial
-unique indexes keep global vs household names from colliding. A household
-creates/renames/deletes only its own categories on `/ingredienser`
-(`create/rename/deleteHouseholdCategory`); global/canonical ones are read-only
-templates there. The category set a household sees = canonical
-(`src/lib/categories.ts`) ∪ global rows ∪ its own rows ∪ categories used by the
-catalog rows visible to it (`listCategories`, now household-scoped).
-Ordering/normalization helpers live in `src/lib/categories.ts` (client-safe, no
-DB import).
+`ingredient_category` follows the same model: `scope_id` NULL = template (the
+canonical list in `src/lib/categories.ts` ∪ admin-created rows), else the
+household's own category. Partial unique indexes keep the two kinds from
+colliding. The category set a household sees = its own rows ∪ categories used by
+its catalog rows (`listCategories`); the default category («Annet») can't be
+deleted since it's the reassignment target. Ordering/normalization helpers live
+in `src/lib/categories.ts` (client-safe, no DB import). `/admin` server fns
+(`src/server/admin.ts`) are all scoped `scope_id IS NULL` — they must never
+touch household copies.
 
 ## Auth tables
 

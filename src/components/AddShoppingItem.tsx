@@ -190,7 +190,6 @@ export function AddShoppingItem({
                       <span className="font-medium text-stone-800">{s.name}</span>
                       <span className="shrink-0 text-xs text-stone-400">
                         {s.category}
-                        {s.isHousehold ? ' · egen' : ''}
                       </span>
                     </button>
                   </li>
