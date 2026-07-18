@@ -20,6 +20,7 @@ import { AddShoppingItem } from '@/components/AddShoppingItem'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { categoryRank, DEFAULT_CATEGORY } from '@/lib/categories'
+import { useHandedness } from '@/lib/handedness'
 import {
   enqueueOp,
   flushOutbox,
@@ -402,6 +403,9 @@ function ShoppingView({
 }) {
   const { recipes, items } = list
   const { add, remove, removeChecked } = useShoppingMutations()
+  // Right-handed mode mirrors each row so the checkbox + name sit on the
+  // right edge (under a right thumb); left is the classic layout.
+  const righty = useHandedness() === 'right'
   // Pantry staples (salt, oil…) are parked in their own de-emphasized section
   // and kept out of the "to buy" flow entirely — they're things you already
   // have, so they don't clutter the active list or the count.
@@ -516,6 +520,7 @@ function ShoppingView({
                     key={item.key}
                     item={item}
                     checked={false}
+                    righty={righty}
                     onToggle={onToggle}
                     onRemove={() => remove.mutate(item.key)}
                     onSetQuantity={onSetQuantity}
@@ -536,6 +541,7 @@ function ShoppingView({
                     item={item}
                     checked={isChecked(item)}
                     muted
+                    righty={righty}
                     onToggle={onToggle}
                     onRemove={() => remove.mutate(item.key)}
                     onSetQuantity={onSetQuantity}
@@ -555,6 +561,7 @@ function ShoppingView({
                     key={item.key}
                     item={item}
                     checked
+                    righty={righty}
                     onToggle={onToggle}
                     onRemove={() => remove.mutate(item.key)}
                     onSetQuantity={onSetQuantity}
@@ -582,6 +589,7 @@ function ShoppingRow({
   item,
   checked,
   muted = false,
+  righty = false,
   online = true,
   onToggle,
   onRemove,
@@ -591,6 +599,9 @@ function ShoppingRow({
   checked: boolean
   /** De-emphasize the row (used for pantry staples in "Har hjemme"). */
   muted?: boolean
+  /** Right-handed mode: mirror the whole row (checkbox + right-aligned name on
+   *  the right edge, buttons on the left). Left is the classic layout. */
+  righty?: boolean
   /** When offline, removing a line is disabled (it needs the network). */
   online?: boolean
   onToggle: (item: ShoppingItem, checked: boolean) => void
@@ -637,16 +648,29 @@ function ShoppingRow({
   }
 
   return (
-    <li className="flex items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-0">
-      {/* The whole left region — checkbox through the name, up to the amount
-          buttons — is one clickable toggle target (react-aria Checkbox label). */}
+    <li
+      className={`flex items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-0 ${
+        righty ? 'flex-row-reverse' : ''
+      }`}
+    >
+      {/* The whole name region — checkbox through the name, up to the amount
+          buttons — is one clickable toggle target (react-aria Checkbox label).
+          In right-handed mode the checkbox goes after the right-aligned name,
+          so the row is a true mirror image. */}
       <Checkbox
         isSelected={checked}
         onChange={(value) => onToggle(item, value)}
         aria-label={`Merk ${item.name} som kjøpt`}
-        className="-my-2 min-w-0 flex-1 py-2"
+        className={`-my-2 min-w-0 flex-1 py-2 ${righty ? 'flex-row-reverse' : ''}`}
       >
-        <span className="min-w-0 flex-1">
+        <span className={`min-w-0 flex-1 ${righty ? 'text-right' : ''}`}>
+          {/* Mirrored reading order too: the recipe-source suffix sits on the
+              outside of the name, away from the checkbox, in both modes. */}
+          {righty && item.sources.length > 0 && (
+            <span className="mr-2 text-sm text-stone-400">
+              {item.sources.join(', ')}
+            </span>
+          )}
           <span
             className={
               checked
@@ -658,7 +682,7 @@ function ShoppingRow({
           >
             {item.name}
           </span>
-          {item.sources.length > 0 && (
+          {!righty && item.sources.length > 0 && (
             <span className="ml-2 text-sm text-stone-400">
               {item.sources.join(', ')}
             </span>

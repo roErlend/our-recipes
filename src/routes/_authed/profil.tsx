@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { Form } from 'react-aria-components'
 import {
+  Hand,
   KeyRound,
   MonitorSmartphone,
   Moon,
@@ -16,6 +17,11 @@ import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
 import { UserAvatar } from '@/components/UserAvatar'
 import { changePassword, signOut, updateUser } from '@/lib/auth-client'
+import {
+  getHandedness,
+  setHandedness,
+  type Handedness,
+} from '@/lib/handedness'
 import {
   getThemePreference,
   setThemePreference,
@@ -45,6 +51,7 @@ function ProfilePage() {
 
       <NameSection initialName={user.name ?? ''} />
       <ThemeSection />
+      <HandednessSection />
       <PasswordSection />
       <DangerZone onDeleted={async () => {
         // Session rows were cascade-deleted; sign-out is best-effort cleanup.
@@ -133,6 +140,48 @@ const THEME_OPTIONS: {
   { value: 'system', label: 'System', icon: MonitorSmartphone },
 ]
 
+/** A small radiogroup of labelled options (theme, handedness). */
+function SegmentedControl<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string
+  options: { value: T; label: string; icon: typeof Sun; iconClassName?: string }[]
+  value: T
+  onChange: (value: T) => void
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="inline-flex self-start rounded-lg border border-stone-300 bg-white p-1"
+    >
+      {options.map(({ value: v, label: optionLabel, icon: Icon, iconClassName }) => {
+        const active = value === v
+        return (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(v)}
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              active
+                ? 'bg-brand-100 text-brand-800'
+                : 'text-stone-600 hover:bg-stone-100'
+            }`}
+          >
+            <Icon className={`h-4 w-4 ${iconClassName ?? ''}`} />
+            {optionLabel}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function ThemeSection() {
   // The stored preference is client-only (localStorage); render the SSR-safe
   // default first and sync after mount to avoid a hydration mismatch.
@@ -149,34 +198,55 @@ function ThemeSection() {
       title="Utseende"
       icon={<SunMoon className="h-4 w-4 text-stone-400" />}
     >
-      <div
-        role="radiogroup"
-        aria-label="Fargetema"
-        className="inline-flex self-start rounded-lg border border-stone-300 bg-white p-1"
-      >
-        {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
-          const active = pref === value
-          return (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => choose(value)}
-              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                active
-                  ? 'bg-brand-100 text-brand-800'
-                  : 'text-stone-600 hover:bg-stone-100'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          )
-        })}
-      </div>
+      <SegmentedControl
+        label="Fargetema"
+        options={THEME_OPTIONS}
+        value={pref}
+        onChange={choose}
+      />
       <p className="text-xs text-stone-400">
         «System» følger innstillingen på enheten din. Valget gjelder denne
+        enheten.
+      </p>
+    </Section>
+  )
+}
+
+/* ------------------------------ handedness -------------------------------- */
+
+const HANDEDNESS_OPTIONS: {
+  value: Handedness
+  label: string
+  icon: typeof Sun
+  iconClassName?: string
+}[] = [
+  // Left is the default (the classic layout: checkbox on the left edge).
+  // The lucide hand is a right hand; mirror it for the left option.
+  { value: 'left', label: 'Venstrehendt', icon: Hand, iconClassName: '-scale-x-100' },
+  { value: 'right', label: 'Høyrehendt', icon: Hand },
+]
+
+function HandednessSection() {
+  // Same SSR pattern as the theme: default first, sync after mount.
+  const [pref, setPref] = useState<Handedness>('left')
+  useEffect(() => setPref(getHandedness()), [])
+
+  const choose = (value: Handedness) => {
+    setPref(value)
+    setHandedness(value)
+  }
+
+  return (
+    <Section title="Hendthet" icon={<Hand className="h-4 w-4 text-stone-400" />}>
+      <SegmentedControl
+        label="Hendthet"
+        options={HANDEDNESS_OPTIONS}
+        value={pref}
+        onChange={choose}
+      />
+      <p className="text-xs text-stone-400">
+        Høyrehendt speilvender handlelisten og fanene nederst, så det du
+        trykker mest på havner under høyre tommel. Valget gjelder denne
         enheten.
       </p>
     </Section>

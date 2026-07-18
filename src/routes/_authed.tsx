@@ -31,6 +31,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { UserAvatar } from '@/components/UserAvatar'
 import { isAdminEmail } from '@/lib/admin'
+import { useHandedness } from '@/lib/handedness'
 import { signOut } from '@/lib/auth-client'
 import { useKeyboardOpen } from '@/lib/useKeyboardOpen'
 import { useSwipeBack } from '@/lib/useSwipeBack'
@@ -93,6 +94,10 @@ function AuthedLayout() {
       ]
     : NAV
   const mobileCols = MOBILE_COLS[nav.length] ?? 'grid-cols-4'
+  // Right-handed mode mirrors the bottom tab bar too, so the most-used tabs
+  // land under a right thumb (matches the shopping list's mirroring).
+  const righty = useHandedness() === 'right'
+  const mobileNav = righty ? [...nav].reverse() : nav
 
   async function handleSignOut() {
     await signOut()
@@ -199,7 +204,7 @@ function AuthedLayout() {
           keyboardOpen ? 'hidden' : ''
         }`}
       >
-        {nav.map(({ to, label, icon: Icon, activeOptions }) => {
+        {mobileNav.map(({ to, label, icon: Icon, activeOptions }) => {
           const tab =
             'flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-transform active:scale-90 active:text-brand-700'
           return (
