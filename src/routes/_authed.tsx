@@ -11,16 +11,25 @@ import {
   useRouter,
 } from '@tanstack/react-router'
 import {
+  Button as AriaButton,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Popover,
+} from 'react-aria-components'
+import {
   Carrot,
   ChefHat,
   ListChecks,
   LogOut,
   Shield,
+  UserCircle,
   UserPlus,
   UtensilsCrossed,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
+import { UserAvatar } from '@/components/UserAvatar'
 import { isAdminEmail } from '@/lib/admin'
 import { signOut } from '@/lib/auth-client'
 import { useKeyboardOpen } from '@/lib/useKeyboardOpen'
@@ -60,7 +69,6 @@ const NAV = [
   { to: '/shopping', label: 'Handleliste', icon: ListChecks, activeOptions: undefined },
   { to: '/recipes', label: 'Oppskrifter', icon: ChefHat, activeOptions: { exact: false } },
   { to: '/ingredienser', label: 'Ingredienser', icon: Carrot, activeOptions: undefined },
-  { to: '/deling', label: 'Deling', icon: UserPlus, activeOptions: undefined },
 ] as const
 
 /** Bottom-tab grid columns by tab count (kept as static classes for Tailwind). */
@@ -122,19 +130,59 @@ function AuthedLayout() {
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-3">
-            <span className="hidden text-sm text-stone-500 md:inline">
-              {user.name || user.email}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onPress={handleSignOut}
-              className="shrink-0"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Logg ut</span>
-            </Button>
+          {/* Account menu: the avatar opens profile settings + logout. */}
+          <div className="ml-auto">
+            <MenuTrigger>
+              <AriaButton
+                aria-label="Konto"
+                className="cursor-pointer rounded-full outline-none transition hover:opacity-90 data-[pressed]:scale-95 data-[focus-visible]:outline-2 data-[focus-visible]:outline-offset-2 data-[focus-visible]:outline-brand-500"
+              >
+                <UserAvatar name={user.name} email={user.email} />
+              </AriaButton>
+              <Popover
+                placement="bottom end"
+                className="min-w-[13rem] rounded-lg border border-stone-200 bg-white py-1 shadow-lg outline-none"
+              >
+                <div className="border-b border-stone-100 px-3 py-2">
+                  <p className="truncate text-sm font-medium text-stone-900">
+                    {user.name || user.email}
+                  </p>
+                  {user.name && (
+                    <p className="truncate text-xs text-stone-400">{user.email}</p>
+                  )}
+                </div>
+                <Menu
+                  className="outline-none"
+                  onAction={(key) => {
+                    if (key === 'profile') router.navigate({ to: '/profil' })
+                    else if (key === 'sharing') router.navigate({ to: '/deling' })
+                    else if (key === 'logout') void handleSignOut()
+                  }}
+                >
+                  <MenuItem
+                    id="profile"
+                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-stone-700 outline-none data-[focused]:bg-brand-50 data-[focused]:text-brand-800"
+                  >
+                    <UserCircle className="h-4 w-4" />
+                    Profilinnstillinger
+                  </MenuItem>
+                  <MenuItem
+                    id="sharing"
+                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-stone-700 outline-none data-[focused]:bg-brand-50 data-[focused]:text-brand-800"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    Deling
+                  </MenuItem>
+                  <MenuItem
+                    id="logout"
+                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-stone-700 outline-none data-[focused]:bg-brand-50 data-[focused]:text-brand-800"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logg ut
+                  </MenuItem>
+                </Menu>
+              </Popover>
+            </MenuTrigger>
           </div>
         </div>
       </header>

@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedShoppingRouteImport } from './routes/_authed/shopping'
+import { Route as AuthedProfilRouteImport } from './routes/_authed/profil'
 import { Route as AuthedIngredienserRouteImport } from './routes/_authed/ingredienser'
 import { Route as AuthedDelingRouteImport } from './routes/_authed/deling'
 import { Route as AuthedAdminRouteImport } from './routes/_authed/admin'
@@ -42,6 +43,11 @@ const IndexRoute = IndexRouteImport.update({
 const AuthedShoppingRoute = AuthedShoppingRouteImport.update({
   id: '/shopping',
   path: '/shopping',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedProfilRoute = AuthedProfilRouteImport.update({
+  id: '/profil',
+  path: '/profil',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedIngredienserRoute = AuthedIngredienserRouteImport.update({
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AuthedAdminRoute
   '/deling': typeof AuthedDelingRoute
   '/ingredienser': typeof AuthedIngredienserRoute
+  '/profil': typeof AuthedProfilRoute
   '/shopping': typeof AuthedShoppingRoute
   '/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/recipes/new': typeof AuthedRecipesNewRoute
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AuthedAdminRoute
   '/deling': typeof AuthedDelingRoute
   '/ingredienser': typeof AuthedIngredienserRoute
+  '/profil': typeof AuthedProfilRoute
   '/shopping': typeof AuthedShoppingRoute
   '/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/recipes/new': typeof AuthedRecipesNewRoute
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   '/_authed/admin': typeof AuthedAdminRoute
   '/_authed/deling': typeof AuthedDelingRoute
   '/_authed/ingredienser': typeof AuthedIngredienserRoute
+  '/_authed/profil': typeof AuthedProfilRoute
   '/_authed/shopping': typeof AuthedShoppingRoute
   '/_authed/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/_authed/recipes/new': typeof AuthedRecipesNewRoute
@@ -160,6 +169,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/deling'
     | '/ingredienser'
+    | '/profil'
     | '/shopping'
     | '/recipes/$recipeId'
     | '/recipes/new'
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/deling'
     | '/ingredienser'
+    | '/profil'
     | '/shopping'
     | '/recipes/$recipeId'
     | '/recipes/new'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/_authed/admin'
     | '/_authed/deling'
     | '/_authed/ingredienser'
+    | '/_authed/profil'
     | '/_authed/shopping'
     | '/_authed/recipes/$recipeId'
     | '/_authed/recipes/new'
@@ -242,6 +254,13 @@ declare module '@tanstack/react-router' {
       path: '/shopping'
       fullPath: '/shopping'
       preLoaderRoute: typeof AuthedShoppingRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/profil': {
+      id: '/_authed/profil'
+      path: '/profil'
+      fullPath: '/profil'
+      preLoaderRoute: typeof AuthedProfilRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/_authed/ingredienser': {
@@ -328,6 +347,7 @@ interface AuthedRouteChildren {
   AuthedAdminRoute: typeof AuthedAdminRoute
   AuthedDelingRoute: typeof AuthedDelingRoute
   AuthedIngredienserRoute: typeof AuthedIngredienserRoute
+  AuthedProfilRoute: typeof AuthedProfilRoute
   AuthedShoppingRoute: typeof AuthedShoppingRoute
   AuthedRecipesRecipeIdRoute: typeof AuthedRecipesRecipeIdRoute
   AuthedRecipesNewRoute: typeof AuthedRecipesNewRoute
@@ -339,6 +359,7 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedAdminRoute: AuthedAdminRoute,
   AuthedDelingRoute: AuthedDelingRoute,
   AuthedIngredienserRoute: AuthedIngredienserRoute,
+  AuthedProfilRoute: AuthedProfilRoute,
   AuthedShoppingRoute: AuthedShoppingRoute,
   AuthedRecipesRecipeIdRoute: AuthedRecipesRecipeIdRoute,
   AuthedRecipesNewRoute: AuthedRecipesNewRoute,

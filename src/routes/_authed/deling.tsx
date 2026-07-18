@@ -5,19 +5,17 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { Form } from 'react-aria-components'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { Check, Mail, Trash2, UserMinus, UserPlus, Users, X } from 'lucide-react'
+import { createFileRoute } from '@tanstack/react-router'
+import { Check, Mail, UserMinus, UserPlus, Users, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
-import { signOut } from '@/lib/auth-client'
 import {
   pendingInvitesQueryOptions,
   recipesQueryOptions,
   sharingQueryOptions,
   shoppingQueryOptions,
 } from '@/lib/queries'
-import { deleteAccount } from '@/server/account'
 import {
   acceptInvite,
   cancelInvite,
@@ -35,11 +33,9 @@ export const Route = createFileRoute('/_authed/deling')({
 
 function SharingPage() {
   const queryClient = useQueryClient()
-  const router = useRouter()
   const { data } = useSuspenseQuery(sharingQueryOptions())
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [confirmingDeleteAccount, setConfirmingDeleteAccount] = useState(false)
   // Two-click confirm before anyone leaves the household. `confirmingRemove`
   // holds the member id mid-confirm; `confirmingLeave` is for leaving myself.
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null)
@@ -91,16 +87,6 @@ function SharingPage() {
       invalidateAll()
     },
   })
-  const deleteAcct = useMutation({
-    mutationFn: () => deleteAccount(),
-    onSuccess: async () => {
-      // Session rows were cascade-deleted; sign-out is best-effort cleanup.
-      await signOut().catch(() => {})
-      await router.invalidate()
-      router.navigate({ to: '/login' })
-    },
-  })
-
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -303,57 +289,6 @@ function SharingPage() {
         )}
       </Section>
 
-      {/* Account deletion — irreversible, so it lives in its own marked-off zone. */}
-      <section className="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50/40 p-5">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-red-700">
-          <Trash2 className="h-4 w-4 text-red-500" />
-          Faresone
-        </h2>
-        <p className="text-sm text-stone-600">
-          Sletter kontoen din og alt du eier — oppskriftene dine, vurderinger og
-          innstillinger. Deler du med noen, forsvinner oppskriftene du eier også
-          for dem. Dette kan ikke angres.
-        </p>
-        {confirmingDeleteAccount ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-stone-700">
-              Helt sikker? Kontoen og dataene slettes for godt.
-            </span>
-            <Button
-              variant="danger"
-              size="sm"
-              isDisabled={deleteAcct.isPending}
-              onPress={() => deleteAcct.mutate()}
-            >
-              <Trash2 className="h-4 w-4" />
-              {deleteAcct.isPending ? 'Sletter…' : 'Slett kontoen min'}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              isDisabled={deleteAcct.isPending}
-              onPress={() => setConfirmingDeleteAccount(false)}
-            >
-              Avbryt
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-start text-red-600"
-            onPress={() => setConfirmingDeleteAccount(true)}
-          >
-            <Trash2 className="h-4 w-4" />
-            Slett kontoen min
-          </Button>
-        )}
-        {deleteAcct.isError && (
-          <p className="text-sm text-red-600">
-            Kunne ikke slette kontoen. Prøv igjen.
-          </p>
-        )}
-      </section>
     </div>
   )
 }
