@@ -255,7 +255,7 @@ export function AddShoppingItem({
                         onClick={() => addNew(newCategory)}
                         disabled={!newCategory.trim()}
                         aria-label="Legg til i ny kategori"
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-600 text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-stone-300"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-600 text-on-brand transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-stone-300"
                       >
                         <Check className="h-3.5 w-3.5" />
                       </button>

@@ -129,7 +129,7 @@ export function AddToShoppingMenu({
   // control reads as one piece in both states.
   const chevronClass = onList
     ? 'bg-white text-stone-800 ring-1 ring-stone-300 ring-inset data-[hovered]:bg-stone-100 data-[pressed]:bg-stone-200'
-    : 'bg-brand-600 text-white border-l border-white/25 data-[hovered]:bg-brand-700 data-[pressed]:bg-brand-800'
+    : 'bg-brand-600 text-on-brand border-l border-on-brand/25 data-[hovered]:bg-brand-700 data-[pressed]:bg-brand-800'
 
   return (
     <div className="flex flex-col gap-2">
@@ -253,7 +253,7 @@ function ShoppingItemPicker({
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       isDismissable
-      className="fixed inset-0 z-30 flex items-start justify-center bg-stone-900/30 p-4 pt-[10vh] backdrop-blur-sm"
+      className="fixed inset-0 z-30 flex items-start justify-center bg-black/40 p-4 pt-[10vh] backdrop-blur-sm"
     >
       <Modal className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl outline-none">
         <Dialog className="outline-none">

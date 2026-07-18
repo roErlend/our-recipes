@@ -111,7 +111,7 @@ function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-on-brand">
             <UtensilsCrossed className="h-6 w-6" />
           </div>
           <h1 className="text-2xl font-bold text-stone-900">

@@ -615,7 +615,7 @@ function ImageField({
             className="max-h-56 w-full object-cover"
           />
           {state.kind === 'upload' && (
-            <span className="absolute top-2 left-2 rounded-full bg-brand-600/90 px-2 py-0.5 text-xs font-medium text-white">
+            <span className="absolute top-2 left-2 rounded-full bg-brand-600/90 px-2 py-0.5 text-xs font-medium text-on-brand">
               Nytt bilde
             </span>
           )}
@@ -626,7 +626,7 @@ function ImageField({
               setError(null)
             }}
             aria-label="Fjern bilde"
-            className="absolute top-2 right-2 rounded-full bg-stone-900/60 p-1.5 text-white transition-colors hover:bg-stone-900/80"
+            className="absolute top-2 right-2 rounded-full bg-black/60 p-1.5 text-on-brand transition-colors hover:bg-black/80"
           >
             <X className="h-4 w-4" />
           </button>
@@ -815,7 +815,7 @@ function IngredientImportDialog({
 
       <ModalOverlay
         isDismissable
-        className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 p-4 backdrop-blur-sm"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
       >
         <Modal className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
           <Dialog className="outline-none">

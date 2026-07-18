@@ -22,7 +22,7 @@ export function UserAvatar({
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex shrink-0 select-none items-center justify-center rounded-full bg-brand-600 font-semibold text-white ${sizeClass}`}
+      className={`inline-flex shrink-0 select-none items-center justify-center rounded-full bg-brand-600 font-semibold text-on-brand ${sizeClass}`}
     >
       {userInitials(name, email)}
     </span>

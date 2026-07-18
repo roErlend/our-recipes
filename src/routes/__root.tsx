@@ -6,6 +6,8 @@ import {
   createRootRouteWithContext,
 } from '@tanstack/react-router'
 
+import { THEME_BOOT_SCRIPT, applyTheme } from '@/lib/theme'
+
 import appCss from '../styles.css?url'
 
 export const Route = createRootRouteWithContext<{
@@ -39,6 +41,8 @@ export const Route = createRootRouteWithContext<{
       { rel: 'icon', href: '/icon.svg', type: 'image/svg+xml' },
       { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
     ],
+    // Apply the stored dark/light preference before first paint (no flash).
+    scripts: [{ children: THEME_BOOT_SCRIPT }],
   }),
   shellComponent: RootDocument,
 })
@@ -67,8 +71,19 @@ function useRegisterServiceWorker() {
   }, [])
 }
 
+/** Follow the OS theme live while the preference is "system". */
+function useSystemThemeSync() {
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = () => applyTheme()
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [])
+}
+
 function RootDocument({ children }: { children: React.ReactNode }) {
   useRegisterServiceWorker()
+  useSystemThemeSync()
   return (
     <html lang="no">
       <head>

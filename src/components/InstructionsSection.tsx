@@ -92,7 +92,7 @@ export function InstructionsSection({ instructions }: { instructions: string }) 
                     'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold',
                     checked
                       ? 'bg-stone-200 text-stone-400'
-                      : 'bg-brand-600 text-white',
+                      : 'bg-brand-600 text-on-brand',
                   ].join(' ')}
                 >
                   {checked ? <Check className="h-4 w-4" /> : i + 1}

@@ -14,13 +14,13 @@ export const button = tv({
   variants: {
     variant: {
       primary:
-        'bg-brand-600 text-white data-[hovered]:bg-brand-700 data-[pressed]:bg-brand-800',
+        'bg-brand-600 text-on-brand data-[hovered]:bg-brand-700 data-[pressed]:bg-brand-800',
       secondary:
         'bg-white text-stone-800 ring-1 ring-stone-300 data-[hovered]:bg-stone-100 data-[pressed]:bg-stone-200',
       ghost:
         'bg-transparent text-stone-700 data-[hovered]:bg-stone-200/70 data-[pressed]:bg-stone-300/70',
       danger:
-        'bg-red-600 text-white data-[hovered]:bg-red-700 data-[pressed]:bg-red-800',
+        'bg-red-600 text-on-brand data-[hovered]:bg-red-700 data-[pressed]:bg-red-800',
     },
     size: {
       sm: 'h-8 px-3 text-sm',

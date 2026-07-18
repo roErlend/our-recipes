@@ -44,7 +44,7 @@ export function NewRecipeMenu() {
         <MenuTrigger>
           <AriaButton
             aria-label="Flere måter å lage oppskrift"
-            className="inline-flex items-center rounded-r-lg border-l border-white/25 bg-brand-600 px-2 text-white outline-none transition-colors data-[hovered]:bg-brand-700 data-[pressed]:bg-brand-800 data-[focus-visible]:outline-2 data-[focus-visible]:outline-offset-2 data-[focus-visible]:outline-brand-500"
+            className="inline-flex items-center rounded-r-lg border-l border-on-brand/25 bg-brand-600 px-2 text-on-brand outline-none transition-colors data-[hovered]:bg-brand-700 data-[pressed]:bg-brand-800 data-[focus-visible]:outline-2 data-[focus-visible]:outline-offset-2 data-[focus-visible]:outline-brand-500"
           >
             <ChevronDown className="h-4 w-4" />
           </AriaButton>

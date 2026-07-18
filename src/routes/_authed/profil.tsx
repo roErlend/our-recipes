@@ -1,13 +1,26 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { Form } from 'react-aria-components'
-import { KeyRound, Trash2, UserCircle } from 'lucide-react'
+import {
+  KeyRound,
+  MonitorSmartphone,
+  Moon,
+  Sun,
+  SunMoon,
+  Trash2,
+  UserCircle,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
 import { UserAvatar } from '@/components/UserAvatar'
 import { changePassword, signOut, updateUser } from '@/lib/auth-client'
+import {
+  getThemePreference,
+  setThemePreference,
+  type ThemePreference,
+} from '@/lib/theme'
 import { deleteAccount } from '@/server/account'
 
 export const Route = createFileRoute('/_authed/profil')({
@@ -31,6 +44,7 @@ function ProfilePage() {
       </div>
 
       <NameSection initialName={user.name ?? ''} />
+      <ThemeSection />
       <PasswordSection />
       <DangerZone onDeleted={async () => {
         // Session rows were cascade-deleted; sign-out is best-effort cleanup.
@@ -103,6 +117,68 @@ function NameSection({ initialName }: { initialName: string }) {
       {saved && !dirty && (
         <p className="text-sm text-brand-700">Navnet er lagret.</p>
       )}
+    </Section>
+  )
+}
+
+/* -------------------------------- theme ---------------------------------- */
+
+const THEME_OPTIONS: {
+  value: ThemePreference
+  label: string
+  icon: typeof Sun
+}[] = [
+  { value: 'light', label: 'Lys', icon: Sun },
+  { value: 'dark', label: 'Mørk', icon: Moon },
+  { value: 'system', label: 'System', icon: MonitorSmartphone },
+]
+
+function ThemeSection() {
+  // The stored preference is client-only (localStorage); render the SSR-safe
+  // default first and sync after mount to avoid a hydration mismatch.
+  const [pref, setPref] = useState<ThemePreference>('system')
+  useEffect(() => setPref(getThemePreference()), [])
+
+  const choose = (value: ThemePreference) => {
+    setPref(value)
+    setThemePreference(value)
+  }
+
+  return (
+    <Section
+      title="Utseende"
+      icon={<SunMoon className="h-4 w-4 text-stone-400" />}
+    >
+      <div
+        role="radiogroup"
+        aria-label="Fargetema"
+        className="inline-flex self-start rounded-lg border border-stone-300 bg-white p-1"
+      >
+        {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
+          const active = pref === value
+          return (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => choose(value)}
+              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                active
+                  ? 'bg-brand-100 text-brand-800'
+                  : 'text-stone-600 hover:bg-stone-100'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      <p className="text-xs text-stone-400">
+        «System» følger innstillingen på enheten din. Valget gjelder denne
+        enheten.
+      </p>
     </Section>
   )
 }

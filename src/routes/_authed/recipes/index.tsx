@@ -279,7 +279,7 @@ function RecipesPage() {
             <SlidersHorizontal className="h-4 w-4" />
             Filtrer
             {activeTags.length > 0 && (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-on-brand">
                 {activeTags.length}
               </span>
             )}
@@ -317,7 +317,7 @@ function RecipesPage() {
                     className={[
                       'rounded-full px-4 py-1.5 text-sm font-semibold capitalize transition-colors',
                       active
-                        ? 'bg-brand-600 text-white hover:bg-brand-700'
+                        ? 'bg-brand-600 text-on-brand hover:bg-brand-700'
                         : 'bg-white text-brand-700 ring-1 ring-brand-300 hover:bg-brand-50',
                     ].join(' ')}
                   >
@@ -343,7 +343,7 @@ function RecipesPage() {
                     className={[
                       'rounded-full px-3 py-1 text-xs font-medium transition-colors',
                       active
-                        ? 'bg-brand-600 text-white hover:bg-brand-700'
+                        ? 'bg-brand-600 text-on-brand hover:bg-brand-700'
                         : 'bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-100',
                     ].join(' ')}
                   >
@@ -468,7 +468,7 @@ function RecipeCard({
             !canAdd
               ? 'cursor-not-allowed text-stone-300'
               : inList
-                ? 'bg-brand-600 text-white hover:bg-brand-700'
+                ? 'bg-brand-600 text-on-brand hover:bg-brand-700'
                 : 'text-stone-400 hover:bg-stone-100 hover:text-brand-700',
           ].join(' ')}
         >

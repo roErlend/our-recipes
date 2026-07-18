@@ -14,7 +14,7 @@ const styles = tv({
       'group-data-[selected]:border-brand-600 group-data-[selected]:bg-brand-600',
       'group-data-[focus-visible]:outline-2 group-data-[focus-visible]:outline-offset-2 group-data-[focus-visible]:outline-brand-500',
     ],
-    icon: 'h-3.5 w-3.5 text-white opacity-0 group-data-[selected]:opacity-100',
+    icon: 'h-3.5 w-3.5 text-on-brand opacity-0 group-data-[selected]:opacity-100',
   },
 })
 

@@ -531,7 +531,7 @@ function ResetTemplatesButton({
         isOpen={open}
         onOpenChange={setOpen}
         isDismissable
-        className="fixed inset-0 z-30 flex items-start justify-center bg-stone-900/30 p-4 pt-[10vh] backdrop-blur-sm"
+        className="fixed inset-0 z-30 flex items-start justify-center bg-black/40 p-4 pt-[10vh] backdrop-blur-sm"
       >
         <Modal className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl outline-none">
           <Dialog role="alertdialog" className="outline-none">

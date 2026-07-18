@@ -153,7 +153,7 @@ export function MealPlanModal({
       isOpen={isOpen}
       onOpenChange={handleOpenChange}
       isDismissable
-      className="fixed inset-0 z-30 flex items-start justify-center bg-stone-900/30 p-4 pt-[8vh] backdrop-blur-sm"
+      className="fixed inset-0 z-30 flex items-start justify-center bg-black/40 p-4 pt-[8vh] backdrop-blur-sm"
     >
       <Modal className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl outline-none">
         <Dialog className="outline-none">
@@ -184,7 +184,7 @@ export function MealPlanModal({
                         className={[
                           'rounded-full px-4 py-1.5 text-sm font-semibold capitalize transition-colors',
                           active
-                            ? 'bg-brand-600 text-white hover:bg-brand-700'
+                            ? 'bg-brand-600 text-on-brand hover:bg-brand-700'
                             : 'bg-white text-brand-700 ring-1 ring-brand-300 hover:bg-brand-50',
                         ].join(' ')}
                       >
@@ -356,7 +356,7 @@ export function MealPlanModal({
                         !canAdd
                           ? 'cursor-not-allowed text-stone-300'
                           : inList
-                            ? 'bg-brand-600 text-white hover:bg-brand-700'
+                            ? 'bg-brand-600 text-on-brand hover:bg-brand-700'
                             : 'text-stone-400 hover:bg-stone-100 hover:text-brand-700',
                       ].join(' ')}
                     >
