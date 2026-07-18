@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ExternalLink,
   Pencil,
+  RotateCcw,
   Star,
   Trash2,
   Users,
@@ -16,7 +17,7 @@ import {
 
 import { AddToShoppingMenu } from '@/components/AddToShoppingMenu'
 import { InstructionsSection } from '@/components/InstructionsSection'
-import { ServingsStepper } from '@/components/ServingsStepper'
+import { ServingsStepper, formatServings } from '@/components/ServingsStepper'
 import { Button } from '@/components/ui/Button'
 import { StarRating } from '@/components/StarRating'
 import {
@@ -48,6 +49,73 @@ function formatQuantity(quantity: number | null, unit: string | null) {
   return [qty, unit].filter(Boolean).join(' ')
 }
 
+/**
+ * A tappable ingredient amount: tap it, type the amount you actually have
+ * (600 g in the recipe but only 400 g in the fridge → type 400), and the whole
+ * recipe rescales around that ingredient. `quantity` is the written (base)
+ * amount; the shown amount applies the current scale.
+ */
+function ScalableAmount({
+  quantity,
+  unit,
+  scale,
+  name,
+  onScale,
+}: {
+  quantity: number
+  unit: string | null
+  scale: number
+  name: string
+  onScale: (scale: number) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const shown = +(quantity * scale).toFixed(2)
+
+  const commit = () => {
+    setEditing(false)
+    const v = Number(draft.trim().replace(',', '.'))
+    // Ignore empty/invalid input; cap the factor at the server's limit.
+    if (!Number.isFinite(v) || v <= 0) return
+    onScale(Math.min(100, v / quantity))
+  }
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-baseline gap-1">
+        <input
+          autoFocus
+          inputMode="decimal"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit()
+            else if (e.key === 'Escape') setEditing(false)
+          }}
+          aria-label={`Mengde ${name}`}
+          className="w-16 rounded border border-brand-400 bg-white px-1 text-sm font-medium text-stone-900 outline-none focus:ring-2 focus:ring-brand-500/30"
+        />
+        {unit && <span className="font-medium text-stone-900">{unit}</span>}
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setDraft(String(shown).replace('.', ','))
+        setEditing(true)
+      }}
+      title="Trykk for å skalere hele oppskriften etter denne mengden"
+      className="cursor-pointer rounded font-medium text-stone-900 underline decoration-stone-300 decoration-dotted underline-offset-4 hover:decoration-brand-500"
+    >
+      {formatQuantity(shown, unit)}
+    </button>
+  )
+}
+
 /** Group ingredients by their `component` label, preserving first-appearance
  *  order (already sorted by sortOrder). Ungrouped ingredients share the `""` key. */
 function groupByComponent(ingredients: RecipeDetail['ingredients']) {
@@ -73,18 +141,25 @@ function RecipeDetailPage() {
   const { data: recipe } = useSuspenseQuery(recipeQueryOptions(recipeId))
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
-  // Target portion count, shared between the "add to list" stepper and the
-  // ingredient amounts below so they scale together. Seeded to the recipe's base
-  // and re-seeded when navigating to a different recipe (the route component is
-  // reused across param changes, so state would otherwise carry over).
+  // One scale factor drives every ingredient amount and the shopping-add, set
+  // either by the portion stepper (n / base) or by anchoring on an ingredient
+  // (typed amount / written amount). Seeded to the recipe's display override
+  // when it has one, and re-seeded when navigating to a different recipe (the
+  // route component is reused across param changes, so state would otherwise
+  // carry over).
   const baseServings = recipe?.servings ?? null
-  const [servings, setServings] = useState(baseServings ?? 1)
+  const defaultServings = recipe?.servingsOverride ?? baseServings
+  const defaultScale =
+    baseServings != null && defaultServings != null
+      ? defaultServings / baseServings
+      : 1
+  const [scale, setScale] = useState(defaultScale)
   const [seededFor, setSeededFor] = useState(recipeId)
   if (seededFor !== recipeId) {
     setSeededFor(recipeId)
-    setServings(baseServings ?? 1)
+    setScale(defaultScale)
   }
-  const scale = baseServings != null ? servings / baseServings : 1
+  const servings = baseServings != null ? baseServings * scale : null
 
   const recipeKey = recipeQueryOptions(recipeId).queryKey
 
@@ -216,7 +291,7 @@ function RecipeDetailPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           {recipe.ingredients.length > 0 ? (
-            <AddToShoppingMenu recipe={recipe} servings={servings} />
+            <AddToShoppingMenu recipe={recipe} scale={scale} />
           ) : null}
           {!recipe.isOwner && recipe.ownerName && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
@@ -224,11 +299,11 @@ function RecipeDetailPage() {
               Delt av {recipe.ownerName}
             </span>
           )}
-          {baseServings != null && (
+          {baseServings != null && defaultServings != null && servings != null && (
             <ServingsStepper
-              baseServings={baseServings}
+              defaultServings={defaultServings}
               servings={servings}
-              onServingsChange={setServings}
+              onServingsChange={(n) => setScale(n / baseServings)}
             />
           )}
           {recipe.sourceUrl && (
@@ -291,8 +366,23 @@ function RecipeDetailPage() {
               Ingredienser
               {scale !== 1 && (
                 <span className="text-sm font-normal text-stone-400">
-                  for {servings} porsjoner
+                  {servings != null
+                    ? `for ${formatServings(servings)} porsjoner`
+                    : `skalert ×${formatServings(scale)}`}
                 </span>
+              )}
+              {/* Recipes without a base portion count have no stepper, so give
+                  an anchored scaling its own way back to the written amounts. */}
+              {servings == null && scale !== 1 && (
+                <button
+                  type="button"
+                  onClick={() => setScale(1)}
+                  aria-label="Tilbakestill til oppskriftens mengder"
+                  title="Tilbakestill til oppskriftens mengder"
+                  className="self-center rounded-full p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </button>
               )}
             </h2>
             <div className="flex flex-col gap-4">
@@ -304,28 +394,32 @@ function RecipeDetailPage() {
                     </h3>
                   )}
                   <ul className="flex flex-col gap-2">
-                    {group.items.map((ing) => {
-                      const amount = formatQuantity(
-                        ing.quantity == null ? null : ing.quantity * scale,
-                        ing.unit,
-                      )
-                      return (
-                        <li
-                          key={ing.id}
-                          className="flex items-baseline gap-2 border-b border-stone-100 pb-2 text-sm last:border-0"
-                        >
-                          {amount && (
+                    {group.items.map((ing) => (
+                      <li
+                        key={ing.id}
+                        className="flex items-baseline gap-2 border-b border-stone-100 pb-2 text-sm last:border-0"
+                      >
+                        {ing.quantity != null ? (
+                          <ScalableAmount
+                            quantity={ing.quantity}
+                            unit={ing.unit}
+                            scale={scale}
+                            name={ing.name}
+                            onScale={setScale}
+                          />
+                        ) : (
+                          formatQuantity(null, ing.unit) && (
                             <span className="font-medium text-stone-900">
-                              {amount}
+                              {formatQuantity(null, ing.unit)}
                             </span>
-                          )}
-                          <span className="text-stone-700">{ing.name}</span>
-                          {ing.note && (
-                            <span className="text-stone-400">({ing.note})</span>
-                          )}
-                        </li>
-                      )
-                    })}
+                          )
+                        )}
+                        <span className="text-stone-700">{ing.name}</span>
+                        {ing.note && (
+                          <span className="text-stone-400">({ing.note})</span>
+                        )}
+                      </li>
+                    ))}
                   </ul>
                 </div>
               ))}

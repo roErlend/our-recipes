@@ -82,6 +82,8 @@ const recipeInput = z.object({
   imageUrl: z.string().trim().url().nullable().optional(),
   instructions: z.string().trim().max(20000).nullable().optional(),
   servings: z.number().int().positive().max(100).nullable().optional(),
+  /** Show the recipe scaled to this portion count by default (see schema). */
+  servingsOverride: z.number().int().positive().max(100).nullable().optional(),
   tags: z.array(z.string().trim().min(1)).max(30).default([]),
   ingredients: z.array(ingredientInput).max(100).default([]),
   /** A new uploaded image as a `data:image/…;base64,…` URL (already resized client-side). */
@@ -333,6 +335,7 @@ export const createRecipe = createServerFn({ method: 'POST' })
           imageUrl: emptyToNull(data.imageUrl ?? null),
           instructions: emptyToNull(data.instructions ?? null),
           servings: data.servings ?? null,
+          servingsOverride: data.servingsOverride ?? null,
           tags: data.tags,
           ownerId: user.id,
         })
@@ -373,6 +376,7 @@ export const updateRecipe = createServerFn({ method: 'POST' })
           imageUrl: emptyToNull(fields.imageUrl ?? null),
           instructions: emptyToNull(fields.instructions ?? null),
           servings: fields.servings ?? null,
+          servingsOverride: fields.servingsOverride ?? null,
           tags: fields.tags,
           updatedAt: new Date(),
         })

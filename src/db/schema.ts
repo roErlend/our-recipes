@@ -98,6 +98,12 @@ export const recipe = pgTable('recipe', {
   /** Free-form preparation steps (markdown / plain text). Empty for linked-only recipes. */
   instructions: text('instructions'),
   servings: integer('servings'),
+  /**
+   * Optional display override: show the recipe scaled to this portion count by
+   * default (and scale shopping-adds by it), while {@link servings} stays the
+   * base the ingredient amounts are written for.
+   */
+  servingsOverride: integer('servings_override'),
   /** Postgres text[] of free-form tags, used for search/filtering. */
   tags: text('tags')
     .array()

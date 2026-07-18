@@ -31,6 +31,12 @@ server function uses. It returns:
 Recipes are **private to the owner** unless shared via the household. A recipe
 can be fully written out (with `ingredient` rows + `instructions`) or just a
 title + `source_url` linking to an external site. `tags` (text[]) power search.
+`servings` is the base portion count the ingredient amounts are written for;
+the optional `servings_override` makes the detail page open scaled to that
+count instead (and is the default scale for shopping-adds). Scaling itself is
+view-time — a single factor on the detail page, set by the portion stepper or
+by anchoring on an ingredient amount — and is passed to `addRecipeToShopping`
+as `scale`.
 
 - `ingredient` — a recipe's ingredient lines (`recipe_id`, name, quantity, unit,
   note, sort_order). Distinct from the **catalog** below.

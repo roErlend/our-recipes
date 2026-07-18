@@ -81,18 +81,16 @@ function formatAmount(quantity: number | null, unit: string | null) {
  */
 export function AddToShoppingMenu({
   recipe,
-  servings,
+  scale,
 }: {
   recipe: RecipeDetail
-  /** Target portion count for scaling, owned by the page (via ServingsStepper) so
-   *  the list scales in lockstep. Only meaningful when the recipe declares a base count. */
-  servings: number
+  /** Quantity scale factor, owned by the page (ServingsStepper / anchored
+   *  ingredient) so the list gets exactly the amounts being displayed. */
+  scale: number
 }) {
   const queryClient = useQueryClient()
   const [picking, setPicking] = useState(false)
   const recipeKey = recipeQueryOptions(recipe.id).queryKey
-
-  const baseServings = recipe.servings
 
   const mutation = useMutation({
     mutationFn: (vars: { inList: boolean; itemKeys?: string[] }) =>
@@ -101,7 +99,7 @@ export function AddToShoppingMenu({
             data: {
               recipeId: recipe.id,
               itemKeys: vars.itemKeys ?? null,
-              servings: baseServings != null ? servings : null,
+              scale,
             },
           })
         : removeRecipeFromShopping({ data: { recipeId: recipe.id } }),
@@ -182,7 +180,7 @@ export function AddToShoppingMenu({
         isOpen={picking}
         onOpenChange={setPicking}
         ingredients={recipe.ingredients}
-        scale={baseServings != null ? servings / baseServings : 1}
+        scale={scale}
         onConfirm={(itemKeys) => {
           mutation.mutate({ inList: true, itemKeys })
           setPicking(false)

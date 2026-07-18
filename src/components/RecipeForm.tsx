@@ -36,6 +36,8 @@ export interface RecipeFormValues {
   uploadedImageUrl: string | null
   instructions: string
   servings: string
+  /** Optional display override: show the recipe scaled to this portion count by default. */
+  servingsOverride: string
   tags: string[]
   ingredients: RecipeFormIngredient[]
 }
@@ -51,6 +53,7 @@ export interface RecipeSubmitValues {
   clearUploadedImage?: boolean
   instructions: string | null
   servings: number | null
+  servingsOverride: number | null
   tags: string[]
   ingredients: {
     name: string
@@ -90,6 +93,7 @@ export const emptyRecipeForm = (): RecipeFormValues => ({
   uploadedImageUrl: null,
   instructions: '',
   servings: '',
+  servingsOverride: '',
   tags: [],
   ingredients: [emptyIngredient()],
 })
@@ -162,6 +166,7 @@ export function parseRecipeImport(
       uploadedImageUrl: null,
       instructions: stepsToText(o.instructions ?? o.steps),
       servings: o.servings == null ? '' : str(o.servings),
+      servingsOverride: '',
       tags: Array.isArray(o.tags) ? o.tags.map(str).map((t) => t.trim()).filter(Boolean) : [],
       ingredients: ingredients.length ? ingredients : [emptyIngredient()],
     },
@@ -201,6 +206,9 @@ function toSubmit(values: RecipeFormValues, img: ImageState): RecipeSubmitValues
     clearUploadedImage,
     instructions: trimmed(values.instructions),
     servings: values.servings.trim() ? Number(values.servings) : null,
+    servingsOverride: values.servingsOverride.trim()
+      ? Number(values.servingsOverride)
+      : null,
     tags: values.tags,
     ingredients: values.ingredients
       .filter((i) => i.name.trim() !== '')
@@ -324,21 +332,30 @@ export function RecipeForm({
           onChange={(v) => set('description', v)}
           placeholder="En kort beskrivelse av oppskriften"
         />
+        <TextField
+          label="Kilde-URL"
+          type="url"
+          description="Lenke til originaloppskriften (valgfritt)"
+          value={values.sourceUrl}
+          onChange={(v) => set('sourceUrl', v)}
+          placeholder="https://…"
+        />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <TextField
-            label="Kilde-URL"
-            type="url"
-            description="Lenke til originaloppskriften (valgfritt)"
-            value={values.sourceUrl}
-            onChange={(v) => set('sourceUrl', v)}
-            placeholder="https://…"
-          />
-          <TextField
             label="Porsjoner"
+            description="Antallet ingrediensmengdene er skrevet for"
             type="number"
             value={values.servings}
             onChange={(v) => set('servings', v)}
             placeholder="4"
+          />
+          <TextField
+            label="Vis som porsjoner"
+            description="Valgfritt: vis oppskriften skalert til dette antallet som standard"
+            type="number"
+            value={values.servingsOverride}
+            onChange={(v) => set('servingsOverride', v)}
+            placeholder="2"
           />
         </div>
         <div className="flex flex-col gap-1.5">

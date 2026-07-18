@@ -116,21 +116,26 @@ export const getShoppingList = createServerFn({ method: 'GET' }).handler(
  *  recipe's previous contributions (so it tracks the recipe's current content).
  *  When `itemKeys` is given, only those lines are added — letting the caller
  *  exclude ingredients they already have; omit/`null` adds every ingredient.
- *  When `servings` is given and the recipe has a base serving count, quantities
- *  are scaled by `servings / recipe.servings` (e.g. cook for 4 from a recipe of
- *  2 → ×2). Unquantified ingredients ("salt etter smak") are left as-is. */
+ *  Quantity scaling, in order of precedence: an explicit `scale` factor (the
+ *  detail page's current scaling, incl. anchored-ingredient scaling); else
+ *  `servings / recipe.servings` when both are known (cook for 4 from a recipe
+ *  of 2 → ×2); else the recipe's own servings override (so a quick add from the
+ *  overview matches how the recipe displays); else 1:1. Unquantified
+ *  ingredients ("salt etter smak") are left as-is. */
 export const addRecipeToShopping = createServerFn({ method: 'POST' })
   .validator(
     (input: {
       recipeId: string
       itemKeys?: string[] | null
       servings?: number | null
+      scale?: number | null
     }) =>
       z
         .object({
           recipeId: z.string().min(1),
           itemKeys: z.array(z.string().min(1)).nullable().optional(),
-          servings: z.number().int().positive().max(100).nullable().optional(),
+          servings: z.number().positive().max(100).nullable().optional(),
+          scale: z.number().positive().max(100).nullable().optional(),
         })
         .parse(input),
   )
@@ -144,12 +149,15 @@ export const addRecipeToShopping = createServerFn({ method: 'POST' })
     })
     if (!r || !ownerIds.includes(r.ownerId)) throw new Error('FORBIDDEN')
 
-    // Scale factor from the requested servings vs the recipe's base. Only scales
-    // when both are known and positive; otherwise everything stays 1:1.
+    const hasBase = r.servings != null && r.servings > 0
     const factor =
-      data.servings != null && r.servings != null && r.servings > 0
-        ? data.servings / r.servings
-        : 1
+      data.scale != null
+        ? data.scale
+        : data.servings != null && hasBase
+          ? data.servings / r.servings!
+          : r.servingsOverride != null && hasBase
+            ? r.servingsOverride / r.servings!
+            : 1
     const scale = (q: number) => Math.round(q * factor * 100) / 100
 
     // Merge this recipe's own duplicate ingredients (e.g. garlic twice) into one

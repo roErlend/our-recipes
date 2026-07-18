@@ -56,6 +56,8 @@ function EditRecipePage() {
     uploadedImageUrl: recipe.uploadedImageUrl,
     instructions: recipe.instructions ?? '',
     servings: recipe.servings != null ? String(recipe.servings) : '',
+    servingsOverride:
+      recipe.servingsOverride != null ? String(recipe.servingsOverride) : '',
     tags: recipe.tags,
     ingredients:
       recipe.ingredients.length > 0
@@ -77,6 +79,9 @@ function EditRecipePage() {
       ...values,
       imageUrl: hasJsonImage ? values.imageUrl : recipe!.imageUrl ?? '',
       uploadedImageUrl: hasJsonImage ? null : recipe!.uploadedImageUrl,
+      // Imports never carry a display override — keep the recipe's own.
+      servingsOverride:
+        recipe!.servingsOverride != null ? String(recipe!.servingsOverride) : '',
     })
     setImportKey((k) => k + 1)
   }
