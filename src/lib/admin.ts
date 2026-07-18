@@ -3,7 +3,7 @@
  * email) — it's used both client-side to show/hide the Admin nav + guard the
  * route, and server-side in `requireAdmin` which is the real enforcement.
  */
-export const ADMIN_EMAIL = [ 'erlend.rommetveit@gmail.com', 'dalland.caroline@gmail.com']
+export const ADMIN_EMAIL = [ 'erlend.rommetveit@gmail.com']
 
 export const isAdminEmail = (email: string | null | undefined) =>
   !!email && ADMIN_EMAIL.includes(email.toLowerCase())
