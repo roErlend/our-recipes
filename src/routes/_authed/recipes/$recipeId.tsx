@@ -288,27 +288,25 @@ function RecipeDetailPage() {
           </div>
         )}
 
-        {/* Roomier vertical rhythm when the actions stack on mobile. The
-            servings control lives with the ingredient list it scales. */}
-{recipe.sourceUrl && (
-              <a
-                href={recipe.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 py-1.5 text-sm font-medium text-brand-700 hover:underline"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Se original oppskrift
-              </a>
-            )}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-5">
-          {!recipe.isOwner && recipe.ownerName && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
-              <Users className="h-4 w-4" />
-              Delt av {recipe.ownerName}
-            </span>
-          )}
-        </div>
+        {recipe.sourceUrl && (
+          // self-start keeps the tap target the size of the text — a flex-col
+          // child would otherwise stretch across the whole page width.
+          <a
+            href={recipe.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 self-start text-sm font-medium text-brand-700 hover:underline"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Se original oppskrift
+          </a>
+        )}
+        {!recipe.isOwner && recipe.ownerName && (
+          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
+            <Users className="h-4 w-4" />
+            Delt av {recipe.ownerName}
+          </span>
+        )}
       </header>
 
       {imageSrc && (
