@@ -259,67 +259,20 @@ function RecipeDetailPage() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          {/* Rediger left, source link pushed to the right edge — far enough
+              apart that neither catches a tap meant for the other. (Delete
+              lives at the bottom of the page.) */}
+          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-start">
             <Link to="/recipes/$recipeId/edit" params={{ recipeId: recipe.id }}>
               <Button variant="secondary" size="sm">
                 <Pencil className="h-4 w-4" />
                 Rediger
               </Button>
             </Link>
-            {confirmingDelete ? (
-              <Button
-                variant="danger"
-                size="sm"
-                isDisabled={deleting}
-                onPress={handleDelete}
-              >
-                <Trash2 className="h-4 w-4" />
-                {deleting ? 'Sletter…' : 'Bekreft sletting'}
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                onPress={() => setConfirmingDelete(true)}
-              >
-                <Trash2 className="h-4 w-4" />
-                Slett
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Roomier vertical rhythm when the actions stack on mobile. */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-5">
           {recipe.ingredients.length > 0 ? (
             <AddToShoppingMenu recipe={recipe} scale={scale} />
           ) : null}
-          {!recipe.isOwner && recipe.ownerName && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
-              <Users className="h-4 w-4" />
-              Delt av {recipe.ownerName}
-            </span>
-          )}
-          {baseServings != null && defaultServings != null && servings != null && (
-            <ServingsStepper
-              defaultServings={defaultServings}
-              servings={servings}
-              onServingsChange={(n) => setScale(n / baseServings)}
-            />
-          )}
-          {recipe.sourceUrl && (
-            // Own row + extra tap padding on mobile, so the link doesn't sit
-            // right next to the add-to-list button and catch stray taps.
-            <a
-              href={recipe.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex w-full items-center gap-1.5 py-1.5 text-sm font-medium text-brand-700 hover:underline sm:w-auto sm:py-0"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Se original oppskrift
-            </a>
-          )}
+          </div>
         </div>
 
         {recipe.tags.length > 0 && (
@@ -334,6 +287,28 @@ function RecipeDetailPage() {
             ))}
           </div>
         )}
+
+        {/* Roomier vertical rhythm when the actions stack on mobile. The
+            servings control lives with the ingredient list it scales. */}
+{recipe.sourceUrl && (
+              <a
+                href={recipe.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 py-1.5 text-sm font-medium text-brand-700 hover:underline"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Se original oppskrift
+              </a>
+            )}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-5">
+          {!recipe.isOwner && recipe.ownerName && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
+              <Users className="h-4 w-4" />
+              Delt av {recipe.ownerName}
+            </span>
+          )}
+        </div>
       </header>
 
       {imageSrc && (
@@ -367,11 +342,11 @@ function RecipeDetailPage() {
           <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <h2 className="mb-3 flex flex-wrap items-baseline gap-x-2 text-lg font-semibold text-stone-900">
               Ingredienser
-              {scale !== 1 && (
+              {/* The stepper below shows the count for recipes with a base;
+                  this hint covers base-less recipes scaled via an ingredient. */}
+              {servings == null && scale !== 1 && (
                 <span className="text-sm font-normal text-stone-400">
-                  {servings != null
-                    ? `for ${formatServings(servings)} porsjoner`
-                    : `skalert ×${formatServings(scale)}`}
+                  skalert ×{formatServings(scale)}
                 </span>
               )}
               {/* Recipes without a base portion count have no stepper, so give
@@ -388,6 +363,15 @@ function RecipeDetailPage() {
                 </button>
               )}
             </h2>
+            {baseServings != null && defaultServings != null && servings != null && (
+              <div className="mb-4">
+                <ServingsStepper
+                  defaultServings={defaultServings}
+                  servings={servings}
+                  onServingsChange={(n) => setScale(n / baseServings)}
+                />
+              </div>
+            )}
             <div className="flex flex-col gap-4">
               {groupByComponent(recipe.ingredients).map((group) => (
                 <div key={group.component || '__none'}>
@@ -488,6 +472,43 @@ function RecipeDetailPage() {
           </ul>
         )}
       </section>
+
+      {/* Deletion lives at the very bottom, far from the everyday actions,
+          with the same two-step confirm as before. */}
+      <div className="flex items-center justify-end gap-2">
+        {confirmingDelete ? (
+          <>
+            <span className="text-sm text-stone-600">Slette oppskriften?</span>
+            <Button
+              variant="danger"
+              size="sm"
+              isDisabled={deleting}
+              onPress={handleDelete}
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleting ? 'Sletter…' : 'Bekreft sletting'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              isDisabled={deleting}
+              onPress={() => setConfirmingDelete(false)}
+            >
+              Avbryt
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-stone-400 hover:text-red-600"
+            onPress={() => setConfirmingDelete(true)}
+          >
+            <Trash2 className="h-4 w-4" />
+            Slett oppskriften
+          </Button>
+        )}
+      </div>
     </article>
   )
 }
