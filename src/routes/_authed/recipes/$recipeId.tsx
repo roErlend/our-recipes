@@ -229,7 +229,7 @@ function RecipeDetailPage() {
         Tilbake til oppskrifter
       </Link>
 
-      <header className="flex flex-col gap-4">
+      <header className="flex flex-col gap-5 sm:gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -289,7 +289,8 @@ function RecipeDetailPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Roomier vertical rhythm when the actions stack on mobile. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-5">
           {recipe.ingredients.length > 0 ? (
             <AddToShoppingMenu recipe={recipe} scale={scale} />
           ) : null}
@@ -307,11 +308,13 @@ function RecipeDetailPage() {
             />
           )}
           {recipe.sourceUrl && (
+            // Own row + extra tap padding on mobile, so the link doesn't sit
+            // right next to the add-to-list button and catch stray taps.
             <a
               href={recipe.sourceUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline"
+              className="inline-flex w-full items-center gap-1.5 py-1.5 text-sm font-medium text-brand-700 hover:underline sm:w-auto sm:py-0"
             >
               <ExternalLink className="h-4 w-4" />
               Se original oppskrift
