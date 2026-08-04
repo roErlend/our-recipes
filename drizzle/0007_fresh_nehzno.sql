@@ -1,0 +1,1 @@
+ALTER TABLE "shopping_check" ADD COLUMN "override_amounts" jsonb;

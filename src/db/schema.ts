@@ -5,6 +5,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -207,13 +208,17 @@ export const shoppingCheck = pgTable(
     itemKey: text('item_key').notNull(),
     checked: boolean('checked').notNull().default(false),
     /**
-     * Optional manual quantity for the aggregated line. When set, it replaces
-     * the quantity summed from the contributing entries on display (the entries
-     * themselves are untouched, so recipe linkage / "on the list" status are
-     * preserved). Null means "use the computed sum". Lives here, keyed by
-     * (scope, item_key), so it survives recipe re-aggregation just like `checked`.
+     * Optional manual quantities for the aggregated line, keyed by unit
+     * (lowercased; '' = a bare count) — e.g. `{"stk": 3, "g": 250}`. A line
+     * merges the same ingredient across units, so each unit is overridable
+     * independently; on display an override replaces the computed bucket of
+     * the same unit dimension (see `applyOverrides` in
+     * `src/lib/shopping-aggregate.ts`). The contributing entries are untouched,
+     * so recipe linkage / "on the list" status are preserved. Null/empty means
+     * "use the computed amounts". Lives here, keyed by (scope, item_key), so it
+     * survives recipe re-aggregation just like `checked`.
      */
-    overrideQuantity: doublePrecision('override_quantity'),
+    overrideAmounts: jsonb('override_amounts').$type<Record<string, number>>(),
     updatedAt: timestamp('updated_at')
       .$defaultFn(() => new Date())
       .notNull(),
@@ -228,10 +233,11 @@ export const shoppingCheck = pgTable(
  * They persist independently of any recipe state; only an explicit remove takes
  * them off the list.
  *
- * The list shown to users aggregates these by {@link itemKey} (normalized
- * name + unit), summing quantities — so two recipes both needing garlic merge
- * into one line. The stored `itemKey` mirrors the server's `itemKey()` helper so
- * aggregation and the {@link shoppingCheck} "ticked off" rows line up exactly.
+ * The list shown to users aggregates these by {@link itemKey} (the normalized
+ * ingredient *name*), summing quantities per unit — so two recipes both needing
+ * garlic merge into one line even when their units differ. The stored `itemKey`
+ * mirrors `shoppingItemKey()` in `src/lib/shopping-aggregate.ts` so aggregation
+ * and the {@link shoppingCheck} "ticked off" rows line up exactly.
  */
 export const shoppingEntry = pgTable(
   'shopping_entry',

@@ -25,52 +25,65 @@ import {
   recipesQueryOptions,
   shoppingQueryOptions,
 } from '@/lib/queries'
-import { shoppingItemKey } from '@/lib/shopping-aggregate'
+import {
+  mergeAmounts,
+  shoppingItemKey,
+  type ShoppingAmount,
+} from '@/lib/shopping-aggregate'
 import { type RecipeDetail } from '@/server/recipes'
 import {
   addRecipeToShopping,
   removeRecipeFromShopping,
 } from '@/server/shopping'
 
-/** A line in the picker: one ingredient merged by item key (so the same item in
- *  two components shows once, with its quantities summed), keeping the component
- *  of its first appearance for grouping. */
+/** A line in the picker: one ingredient merged by item key — the normalized
+ *  name, so the same item shows once even across units/components — keeping
+ *  the component of its first appearance for grouping. */
 interface PickLine {
   key: string
   name: string
-  unit: string | null
-  quantity: number | null
+  amounts: ShoppingAmount[]
   component: string
 }
 
 /** Merge a recipe's ingredients into the unique shopping lines they'd produce,
- *  mirroring the server's by-key merge. Preserves first-appearance order. */
+ *  mirroring the server's by-key merge (quantities bucketed per unit).
+ *  Preserves first-appearance order. */
 function mergeForPicking(ingredients: RecipeDetail['ingredients']): PickLine[] {
-  const map = new Map<string, PickLine>()
+  const map = new Map<
+    string,
+    {
+      name: string
+      component: string
+      contribs: { quantity: number | null; unit: string | null }[]
+    }
+  >()
   for (const ing of ingredients) {
-    const key = shoppingItemKey(ing.name, ing.unit)
+    const key = shoppingItemKey(ing.name)
+    const contrib = { quantity: ing.quantity ?? null, unit: ing.unit }
     const existing = map.get(key)
-    if (existing) {
-      if (ing.quantity != null) {
-        existing.quantity = (existing.quantity ?? 0) + ing.quantity
-      }
-    } else {
+    if (existing) existing.contribs.push(contrib)
+    else {
       map.set(key, {
-        key,
         name: ing.name.trim(),
-        unit: ing.unit,
-        quantity: ing.quantity ?? null,
         component: ing.component?.trim() || '',
+        contribs: [contrib],
       })
     }
   }
-  return [...map.values()]
+  return [...map.entries()].map(([key, g]) => ({
+    key,
+    name: g.name,
+    component: g.component,
+    amounts: mergeAmounts(g.contribs).amounts,
+  }))
 }
 
-function formatAmount(quantity: number | null, unit: string | null) {
-  if (quantity == null && !unit) return null
-  const qty = quantity == null ? '' : `${+quantity.toFixed(2)}`
-  return [qty, unit].filter(Boolean).join(' ')
+function formatAmounts(amounts: ShoppingAmount[], scale: number) {
+  if (!amounts.length) return null
+  return amounts
+    .map((a) => `${+(a.quantity * scale).toFixed(2)}${a.unit ? ` ${a.unit}` : ''}`)
+    .join(' + ')
 }
 
 /**
@@ -287,10 +300,7 @@ function ShoppingItemPicker({
                 )}
                 <ul className="flex flex-col gap-2">
                   {group.items.map((line) => {
-                    const amount = formatAmount(
-                      line.quantity == null ? null : line.quantity * scale,
-                      line.unit,
-                    )
+                    const amount = formatAmounts(line.amounts, scale)
                     return (
                       <li key={line.key}>
                         <Checkbox

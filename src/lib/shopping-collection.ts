@@ -19,15 +19,16 @@ import { z } from 'zod'
  *
  * Only the household's own rows arrive here — the `/api/shapes/shopping` proxy
  * pins the `where` clause server-side. The columns mirror the proxy's
- * `columns=user_id,item_key,checked,override_quantity` selection.
+ * `columns=…` selection.
  */
 const shoppingCheckRow = z.object({
   user_id: z.string(),
   item_key: z.string(),
   checked: z.boolean(),
-  // Manual per-line quantity override (null = use the computed sum). Synced so
-  // an edit on one device propagates to the other; see shopping.tsx.
-  override_quantity: z.number().nullable(),
+  // Manual per-unit quantity overrides, unit key → quantity (null/empty = use
+  // the computed amounts). Synced so an edit on one device propagates to the
+  // other; see shopping.tsx.
+  override_amounts: z.record(z.string(), z.number()).nullable(),
   // When the row was last written (checked/unchecked/override). Electric sends
   // it as a string; used to sort the checked section most-recently-checked first.
   updated_at: z.string().nullable(),

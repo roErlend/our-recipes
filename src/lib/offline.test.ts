@@ -29,16 +29,33 @@ describe('enqueueOp', () => {
 
   it('keeps a check and a quantity for the same item as separate ops', () => {
     enqueueOp({ type: 'check', key: 'a', value: true })
-    enqueueOp({ type: 'quantity', key: 'a', value: 3 })
+    enqueueOp({ type: 'quantity', key: 'a', value: 3, unit: null })
 
-    expect(ids().sort()).toEqual(['check:a', 'quantity:a'])
+    expect(ids().sort()).toEqual(['check:a', 'quantity:a:'])
+  })
+
+  it('queues edits to different units of one line independently', () => {
+    enqueueOp({ type: 'quantity', key: 'a', value: 3, unit: 'stk' })
+    enqueueOp({ type: 'quantity', key: 'a', value: 250, unit: 'g' })
+    enqueueOp({ type: 'quantity', key: 'a', value: 4, unit: 'stk' })
+
+    expect(ids().sort()).toEqual(['quantity:a:g', 'quantity:a:stk'])
+    const stk = getOutboxSnapshot().find((o) => o.id === 'quantity:a:stk')
+    expect(stk).toMatchObject({ value: 4 })
+  })
+
+  it('gives a clear-all its own slot so unit edits cannot swallow it', () => {
+    enqueueOp({ type: 'quantity', key: 'a', value: null, unit: null })
+    enqueueOp({ type: 'quantity', key: 'a', value: 2, unit: 'stk' })
+
+    expect(ids().sort()).toEqual(['quantity:a:!clear', 'quantity:a:stk'])
   })
 })
 
 describe('flushOutbox', () => {
   it('replays every queued op and drains on success', async () => {
     enqueueOp({ type: 'check', key: 'a', value: true })
-    enqueueOp({ type: 'quantity', key: 'b', value: 2 })
+    enqueueOp({ type: 'quantity', key: 'b', value: 2, unit: null })
 
     const seen: OutboxOp[] = []
     await flushOutbox(async (op) => {

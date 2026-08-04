@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   aggregateShoppingEntries,
+  applyOverrides,
+  mergeAmounts,
+  shoppingItemKey,
   type ShoppingEntryInput,
 } from '@/lib/shopping-aggregate'
 
@@ -19,19 +22,146 @@ const entry = (over: Partial<ShoppingEntryInput>): ShoppingEntryInput => ({
 const noChecks = () => false
 const cat = (_: string) => 'Annet'
 
+describe('shoppingItemKey', () => {
+  it('is the lowercased, trimmed name — no unit', () => {
+    expect(shoppingItemKey('  Løk ')).toBe('løk')
+  })
+})
+
+describe('mergeAmounts', () => {
+  it('sums within a unit', () => {
+    expect(
+      mergeAmounts([
+        { quantity: 2, unit: 'stk' },
+        { quantity: 3, unit: 'stk' },
+      ]).amounts,
+    ).toEqual([{ quantity: 5, unit: 'stk' }])
+  })
+
+  it('keeps incompatible units as separate buckets, first-seen order', () => {
+    expect(
+      mergeAmounts([
+        { quantity: 2, unit: 'stk' },
+        { quantity: 200, unit: 'g' },
+      ]).amounts,
+    ).toEqual([
+      { quantity: 2, unit: 'stk' },
+      { quantity: 200, unit: 'g' },
+    ])
+  })
+
+  it('converts and merges compatible metric units', () => {
+    expect(
+      mergeAmounts([
+        { quantity: 900, unit: 'g' },
+        { quantity: 0.3, unit: 'kg' },
+      ]).amounts,
+    ).toEqual([{ quantity: 1.2, unit: 'kg' }])
+    expect(
+      mergeAmounts([
+        { quantity: 1, unit: 'dl' },
+        { quantity: 50, unit: 'ml' },
+      ]).amounts,
+    ).toEqual([{ quantity: 1.5, unit: 'dl' }])
+  })
+
+  it('picks a friendly display unit for the bucket total', () => {
+    expect(mergeAmounts([{ quantity: 400, unit: 'g' }]).amounts).toEqual([
+      { quantity: 400, unit: 'g' },
+    ])
+    expect(mergeAmounts([{ quantity: 1500, unit: 'ml' }]).amounts).toEqual([
+      { quantity: 1.5, unit: 'l' },
+    ])
+    expect(mergeAmounts([{ quantity: 60, unit: 'ml' }]).amounts).toEqual([
+      { quantity: 60, unit: 'ml' },
+    ])
+  })
+
+  it('buckets unit spellings case-insensitively, keeping the first-seen label', () => {
+    expect(
+      mergeAmounts([
+        { quantity: 1, unit: 'ss' },
+        { quantity: 2, unit: 'SS' },
+      ]).amounts,
+    ).toEqual([{ quantity: 3, unit: 'ss' }])
+  })
+
+  it('flags unquantified contributions without creating a bucket', () => {
+    const { amounts, hasUnquantified } = mergeAmounts([
+      { quantity: null, unit: null },
+      { quantity: 2, unit: 'stk' },
+    ])
+    expect(amounts).toEqual([{ quantity: 2, unit: 'stk' }])
+    expect(hasUnquantified).toBe(true)
+  })
+})
+
+describe('applyOverrides', () => {
+  it('replaces only the overridden unit, leaving the others computed', () => {
+    const amounts = [
+      { quantity: 2, unit: 'stk' },
+      { quantity: 200, unit: 'g' },
+    ]
+    expect(applyOverrides(amounts, { stk: 4 })).toEqual([
+      { quantity: 4, unit: 'stk' },
+      { quantity: 200, unit: 'g' },
+    ])
+  })
+
+  it('matches by unit dimension, so a kg override replaces a g bucket', () => {
+    expect(applyOverrides([{ quantity: 900, unit: 'g' }], { kg: 2 })).toEqual([
+      { quantity: 2, unit: 'kg' },
+    ])
+  })
+
+  it('appends overrides with no matching bucket', () => {
+    expect(applyOverrides([{ quantity: 2, unit: 'stk' }], { g: 500 })).toEqual([
+      { quantity: 2, unit: 'stk' },
+      { quantity: 500, unit: 'g' },
+    ])
+  })
+
+  it('returns the computed amounts untouched when there are no overrides', () => {
+    const amounts = [{ quantity: 2, unit: 'stk' }]
+    expect(applyOverrides(amounts, {})).toBe(amounts)
+  })
+
+  it("treats the '' key as a unitless amount", () => {
+    expect(applyOverrides([{ quantity: 2, unit: null }], { '': 5 })).toEqual([
+      { quantity: 5, unit: null },
+    ])
+  })
+})
+
 describe('aggregateShoppingEntries', () => {
   it('sums quantities for contributions sharing an itemKey', () => {
     const { items } = aggregateShoppingEntries(
       [
-        entry({ itemKey: 'flour', quantity: 200 }),
-        entry({ itemKey: 'flour', quantity: 300 }),
+        entry({ itemKey: 'flour', quantity: 200, unit: 'g' }),
+        entry({ itemKey: 'flour', quantity: 300, unit: 'g' }),
       ],
       { resolveCategory: cat, isChecked: noChecks },
     )
 
     expect(items).toHaveLength(1)
-    expect(items[0].quantity).toBe(500)
+    expect(items[0].amounts).toEqual([{ quantity: 500, unit: 'g' }])
     expect(items[0].hasUnquantified).toBe(false)
+  })
+
+  it('merges different units of the same item into one line with per-unit amounts', () => {
+    const { items } = aggregateShoppingEntries(
+      [
+        entry({ itemKey: 'løk', name: 'Løk', quantity: 2, unit: 'stk' }),
+        entry({ itemKey: 'løk', name: 'Løk', quantity: 200, unit: 'g' }),
+      ],
+      { resolveCategory: cat, isChecked: noChecks },
+    )
+
+    expect(items).toHaveLength(1)
+    expect(items[0].amounts).toEqual([
+      { quantity: 2, unit: 'stk' },
+      { quantity: 200, unit: 'g' },
+    ])
   })
 
   it('collects and dedupes sourceTitles into sources', () => {
@@ -50,33 +180,33 @@ describe('aggregateShoppingEntries', () => {
   it('sets hasUnquantified when any merged contribution has a null quantity', () => {
     const { items } = aggregateShoppingEntries(
       [
-        entry({ itemKey: 'salt', name: 'Salt', quantity: 5 }),
+        entry({ itemKey: 'salt', name: 'Salt', quantity: 5, unit: 'g' }),
         entry({ itemKey: 'salt', name: 'Salt', quantity: null }),
       ],
       { resolveCategory: cat, isChecked: noChecks },
     )
 
-    expect(items[0].quantity).toBe(5)
+    expect(items[0].amounts).toEqual([{ quantity: 5, unit: 'g' }])
     expect(items[0].hasUnquantified).toBe(true)
   })
 
-  it('leaves quantity null and flags unquantified for a lone null-quantity entry', () => {
+  it('leaves amounts empty and flags unquantified for a lone null-quantity entry', () => {
     const { items } = aggregateShoppingEntries(
       [entry({ itemKey: 'pepper', name: 'Pepper', quantity: null })],
       { resolveCategory: cat, isChecked: noChecks },
     )
 
-    expect(items[0].quantity).toBeNull()
+    expect(items[0].amounts).toEqual([])
     expect(items[0].hasUnquantified).toBe(true)
   })
 
-  it('never sets overrideQuantity (always defaults to null)', () => {
+  it('never sets overrides (always defaults to empty)', () => {
     const { items } = aggregateShoppingEntries(
       [entry({ itemKey: 'flour', quantity: 100 })],
       { resolveCategory: cat, isChecked: noChecks },
     )
 
-    expect(items[0].overrideQuantity).toBeNull()
+    expect(items[0].overrides).toEqual({})
   })
 
   it('builds recipes from distinct (sourceRecipeId, sourceTitle) pairs', () => {

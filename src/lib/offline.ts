@@ -122,10 +122,31 @@ export function withOfflineCache<T>(
 
 export type OutboxOp =
   | { id: string; type: 'check'; key: string; value: boolean; seq: number }
-  | { id: string; type: 'quantity'; key: string; value: number | null; seq: number }
+  | {
+      id: string
+      type: 'quantity'
+      key: string
+      /** Quantity for the unit, or null to clear that unit's override. */
+      value: number | null
+      /** The unit key being overridden ('' = a bare count). null together with
+       *  a null value = clear ALL of the line's overrides. */
+      unit?: string | null
+      seq: number
+    }
 
-/** Coalescing id: one pending op per (kind, item) — a re-toggle replaces it. */
-const opId = (type: OutboxOp['type'], key: string) => `${type}:${key}`
+/** Coalescing id: one pending op per (kind, item[, unit]) — a re-toggle or a
+ *  re-edit of the same unit replaces the queued op; edits to different units
+ *  of one line queue independently. A clear-all (unit AND value null) gets its
+ *  own slot so a later single-unit edit can't swallow it. */
+const opId = (op: {
+  type: OutboxOp['type']
+  key: string
+  unit?: string | null
+  value: boolean | number | null
+}) =>
+  op.type === 'quantity'
+    ? `quantity:${op.key}:${op.unit == null && op.value == null ? '!clear' : (op.unit ?? '')}`
+    : `${op.type}:${op.key}`
 
 let outbox: OutboxOp[] = []
 // Monotonic per-enqueue sequence: orders the queue and uniquely identifies an op
@@ -165,9 +186,9 @@ const subscribe = (cb: () => void) => {
 export function enqueueOp(
   op:
     | { type: 'check'; key: string; value: boolean }
-    | { type: 'quantity'; key: string; value: number | null },
+    | { type: 'quantity'; key: string; value: number | null; unit: string | null },
 ): void {
-  const id = opId(op.type, op.key)
+  const id = opId(op)
   const next = { ...op, id, seq: ++seqCounter } as OutboxOp
   outbox = [...outbox.filter((o) => o.id !== id), next]
   void idbSet('outbox', id, next)
@@ -229,19 +250,20 @@ export interface OutboxView {
   ops: OutboxOp[]
   /** Pending checked overrides by item key (latest queued value). */
   pendingChecked: Map<string, boolean>
-  /** Pending quantity overrides by item key (null = cleared back to the sum). */
-  pendingOverride: Map<string, number | null>
+  /** Pending per-unit quantity edits, oldest-first — the list replays them onto
+   *  each item's overrides as its optimistic overlay. */
+  pendingQuantity: Extract<OutboxOp, { type: 'quantity' }>[]
   count: number
 }
 
-/** Subscribe to the outbox; derives the optimistic overlay maps for the list. */
+/** Subscribe to the outbox; derives the optimistic overlay for the list. */
 export function useOutbox(): OutboxView {
   const ops = useSyncExternalStore(subscribe, getOutboxSnapshot, () => EMPTY)
   const pendingChecked = new Map<string, boolean>()
-  const pendingOverride = new Map<string, number | null>()
+  const pendingQuantity: Extract<OutboxOp, { type: 'quantity' }>[] = []
   for (const op of ops) {
     if (op.type === 'check') pendingChecked.set(op.key, op.value)
-    else pendingOverride.set(op.key, op.value)
+    else pendingQuantity.push(op)
   }
-  return { ops, pendingChecked, pendingOverride, count: ops.length }
+  return { ops, pendingChecked, pendingQuantity, count: ops.length }
 }

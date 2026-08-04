@@ -11,7 +11,7 @@ and a TanStack DB collection in `src/lib/shopping-collection.ts`:
 
 | Shape          | Table            | Columns                                   | Client uses it to… |
 | -------------- | ---------------- | ----------------------------------------- | ------------------ |
-| `shopping`     | `shopping_check` | `checked` / `override_quantity`           | `checked` → **read directly** (synced truth; the optimistic overlay is the offline outbox, not the collection); `override_quantity` → **signal** (refetch on change) |
+| `shopping`     | `shopping_check` | `checked` / `override_amounts`           | `checked` → **read directly** (synced truth; the optimistic overlay is the offline outbox, not the collection); `override_amounts` → **signal** (refetch on change) |
 | `shopping-entries` | `shopping_entry` | list contents                         | **signal only** — detect contents changing, then refetch |
 
 > Both collections are **read-only**. Writes never go through TanStack DB's
@@ -20,7 +20,7 @@ and a TanStack DB collection in `src/lib/shopping-collection.ts`:
 
 > The `shopping` shape carries two columns with *different* sync styles.
 > `checked` is read straight from the collection (a per-row overlay → instant
-> optimistic toggle). `override_quantity` (manual quantity edit) is server-applied
+> optimistic toggle). `override_amounts` (manual quantity edit) is server-applied
 > into the displayed amount, so it can't be a simple overlay — instead its change
 > is a **signal**: a signature over the override values (NOT `checked`, so plain
 > toggles don't trigger it) drives a `['shopping']` refetch. Locally the edit is

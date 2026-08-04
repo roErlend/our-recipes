@@ -10,17 +10,20 @@ import {
   ListChecks,
   Minus,
   Plus,
+  RotateCcw,
   ShoppingCart,
   Trash2,
   WifiOff,
   X,
 } from 'lucide-react'
+import { Dialog, Heading, Modal, ModalOverlay } from 'react-aria-components'
 
 import { AddShoppingItem } from '@/components/AddShoppingItem'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { categoryRank, DEFAULT_CATEGORY } from '@/lib/categories'
 import { useHandedness } from '@/lib/handedness'
+import { applyOverrides, unitDimension, unitKeyOf } from '@/lib/shopping-aggregate'
 import {
   enqueueOp,
   flushOutbox,
@@ -90,25 +93,29 @@ function groupItems(
     }))
 }
 
-/** The amount shown for a line: a manual override wins over the computed sum. */
-function effectiveQuantity(item: ShoppingItem) {
-  return item.overrideQuantity ?? item.quantity
+/**
+ * The amount(s) shown for a line: the computed per-unit buckets with any
+ * manual overrides applied. A line merges the same ingredient across units
+ * («2 stk + 200 g»), so this is a list.
+ */
+function effectiveAmounts(item: ShoppingItem) {
+  return applyOverrides(item.amounts, item.overrides)
+}
+
+const hasOverrides = (item: ShoppingItem) => Object.keys(item.overrides).length > 0
+
+function fmtAmount(a: { quantity: number; unit: string | null }) {
+  return `${+a.quantity.toFixed(2)}${a.unit ? ` ${a.unit}` : ''}`
 }
 
 function formatAmount(item: ShoppingItem) {
-  const qty = effectiveQuantity(item)
-  const parts: string[] = []
-  if (qty != null) {
-    parts.push(`${+qty.toFixed(2)}${item.unit ? ` ${item.unit}` : ''}`)
-  } else if (item.unit) {
-    parts.push(item.unit)
+  const parts = effectiveAmounts(item).map(fmtAmount)
+  // "+ mer" flags an unquantified contribution on the *computed* amounts; a
+  // manual override is an explicit statement, so it suppresses the hint.
+  if (!hasOverrides(item) && item.hasUnquantified && parts.length) {
+    parts.push('mer')
   }
-  // "+ mer" flags an unquantified contribution on the *computed* sum; a manual
-  // override is an explicit total, so it suppresses the hint.
-  if (item.overrideQuantity == null && item.hasUnquantified && qty != null) {
-    parts.push('+ mer')
-  }
-  return parts.join(' ')
+  return parts.join(' + ')
 }
 
 /** True only after the first client render, so we never run the Electric live query during SSR. */
@@ -144,7 +151,7 @@ function useShoppingFlush() {
         await awaitTxIdSafe(txid)
       } else {
         const { txid } = await setItemQuantity({
-          data: { key: op.key, quantity: op.value },
+          data: { key: op.key, unit: op.unit ?? null, quantity: op.value },
         })
         await awaitTxIdSafe(txid)
         // The displayed amount is server-computed, so pull the fresh snapshot
@@ -190,9 +197,8 @@ function useShoppingMutations() {
       await queryClient.cancelQueries({ queryKey: shoppingKey })
       const previous = queryClient.getQueryData<ShoppingList>(shoppingKey)
       const name = input.name.trim()
-      // Manual items carry no unit, so the key mirrors the server's
-      // itemKey(name, null) = "<lowercased name>__".
-      const key = `${name.toLowerCase()}__`
+      // The key mirrors the server's itemKey(name) — the lowercased name.
+      const key = name.toLowerCase()
       // Show the right category immediately: a known ingredient's catalog
       // category, else the one chosen for the new ingredient, else the default.
       const catalog = queryClient.getQueryData<CatalogIngredient[]>(ingredientsKey)
@@ -203,9 +209,8 @@ function useShoppingMutations() {
         const optimistic: ShoppingItem = {
           key,
           name,
-          unit: null,
-          quantity: null,
-          overrideQuantity: null,
+          amounts: [],
+          overrides: {},
           hasUnquantified: true,
           sources: [],
           category,
@@ -304,8 +309,8 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
   // device. Keyed on override values only (not `checked`) so plain toggles,
   // which need no refetch, don't trigger one.
   const overridesSig = (checkRows ?? [])
-    .filter((r) => r.override_quantity != null)
-    .map((r) => `${r.item_key}:${r.override_quantity}`)
+    .filter((r) => r.override_amounts && Object.keys(r.override_amounts).length)
+    .map((r) => `${r.item_key}:${JSON.stringify(r.override_amounts)}`)
     .sort()
     .join('|')
   const syncSig = `${entriesSig}||${overridesSig}`
@@ -319,7 +324,7 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
   }, [syncSig, queryClient])
 
   const online = useOnline()
-  const { pendingChecked, pendingOverride, count } = useOutbox()
+  const { pendingChecked, pendingQuantity, count } = useOutbox()
   const flush = useShoppingFlush()
 
   const checkedByKey = new Map((checkRows ?? []).map((r) => [r.item_key, r.checked]))
@@ -346,16 +351,34 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
       ? Number.MAX_SAFE_INTEGER
       : (checkedAtByKey.get(item.key) ?? item.checkedAt)
 
+  // Replay pending per-unit edits (oldest-first) onto each item's overrides —
+  // the same rules the server applies, so the optimistic view matches what the
+  // flush will produce.
   const overlaidList =
-    pendingOverride.size === 0
+    pendingQuantity.length === 0
       ? list
       : {
           ...list,
-          items: list.items.map((i) =>
-            pendingOverride.has(i.key)
-              ? { ...i, overrideQuantity: pendingOverride.get(i.key)! }
-              : i,
-          ),
+          items: list.items.map((i) => {
+            const mine = pendingQuantity.filter((op) => op.key === i.key)
+            if (!mine.length) return i
+            const overrides = { ...i.overrides }
+            for (const op of mine) {
+              if (op.value == null && op.unit == null) {
+                for (const k of Object.keys(overrides)) delete overrides[k]
+              } else if (op.value == null) {
+                delete overrides[unitKeyOf(op.unit)]
+              } else {
+                const unitKey = unitKeyOf(op.unit)
+                const dim = unitDimension(unitKey)
+                for (const k of Object.keys(overrides)) {
+                  if (unitDimension(k) === dim) delete overrides[k]
+                }
+                overrides[unitKey] = op.value
+              }
+            }
+            return { ...i, overrides }
+          }),
         }
 
   const toggle = (item: ShoppingItem, checked: boolean) => {
@@ -363,8 +386,8 @@ function RealtimeShoppingList({ list }: { list: ShoppingList }) {
     flush()
   }
 
-  const onSetQuantity = (key: string, quantity: number | null) => {
-    enqueueOp({ type: 'quantity', key, value: quantity })
+  const onSetQuantity = (key: string, unit: string | null, quantity: number | null) => {
+    enqueueOp({ type: 'quantity', key, unit, value: quantity })
     flush()
   }
 
@@ -395,7 +418,7 @@ function ShoppingView({
   /** When a line was checked (epoch ms), or null — sorts the checked section. */
   checkedAt: (item: ShoppingItem) => number | null
   onToggle: (item: ShoppingItem, checked: boolean) => void
-  onSetQuantity: (key: string, quantity: number | null) => void
+  onSetQuantity: (key: string, unit: string | null, quantity: number | null) => void
   /** False when the browser is offline — disables actions that need the network. */
   online: boolean
   /** Count of queued offline edits awaiting flush. */
@@ -606,19 +629,32 @@ function ShoppingRow({
   online?: boolean
   onToggle: (item: ShoppingItem, checked: boolean) => void
   onRemove: () => void
-  onSetQuantity: (key: string, quantity: number | null) => void
+  onSetQuantity: (key: string, unit: string | null, quantity: number | null) => void
 }) {
   const amount = formatAmount(item)
   const [editing, setEditing] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [draft, setDraft] = useState('')
   // Escape sets this so the blur that follows (input unmount) skips the save.
   const skipCommit = useRef(false)
 
-  const effective = effectiveQuantity(item)
+  // A line aggregating several units («2 stk + 200 g») can't be edited with
+  // one number — tapping its amount opens a dialog with a stepper per unit.
+  // Single-unit lines keep the inline ± / tap-to-type flow.
+  const effective = effectiveAmounts(item)
+  const multi = effective.length > 1
+  const target = effective[0] ?? { quantity: null, unit: null }
+  const targetUnitKey = unitKeyOf(target.unit)
 
   const startEdit = () => {
+    if (multi) {
+      setDialogOpen(true)
+      return
+    }
     setDraft(
-      effective != null ? String(+effective.toFixed(2)).replace('.', ',') : '',
+      target.quantity != null
+        ? String(+target.quantity.toFixed(2)).replace('.', ',')
+        : '',
     )
     setEditing(true)
   }
@@ -631,20 +667,23 @@ function ShoppingRow({
     }
     const raw = draft.trim().replace(',', '.')
     if (raw === '') {
-      // Empty → clear the override (revert to the computed sum).
-      if (item.overrideQuantity != null) onSetQuantity(item.key, null)
+      // Empty → clear the override (revert to the computed amounts).
+      if (hasOverrides(item)) onSetQuantity(item.key, null, null)
       return
     }
     const n = Number(raw)
     if (!Number.isFinite(n) || n <= 0) return
-    if (n !== effective) onSetQuantity(item.key, +n.toFixed(2))
+    if (n !== target.quantity) onSetQuantity(item.key, targetUnitKey, +n.toFixed(2))
   }
 
   // Steppers set a manual override on the line; ± operate on the shown amount.
-  const increment = () => onSetQuantity(item.key, +((effective ?? 0) + 1).toFixed(2))
-  const canDecrement = effective != null && effective > 1
+  const increment = () =>
+    onSetQuantity(item.key, targetUnitKey, +((target.quantity ?? 0) + 1).toFixed(2))
+  const canDecrement = target.quantity != null && target.quantity > 1
   const decrement = () => {
-    if (canDecrement) onSetQuantity(item.key, +(effective - 1).toFixed(2))
+    if (canDecrement) {
+      onSetQuantity(item.key, targetUnitKey, +(target.quantity! - 1).toFixed(2))
+    }
   }
 
   return (
@@ -709,19 +748,23 @@ function ShoppingRow({
             aria-label={`Antall for ${item.name}`}
             className="w-16 rounded border border-stone-300 px-1.5 py-0.5 text-right text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           />
-          {item.unit && <span className="text-sm text-stone-500">{item.unit}</span>}
+          {target.unit && (
+            <span className="text-sm text-stone-500">{target.unit}</span>
+          )}
         </span>
       ) : (
         <div className="flex shrink-0 items-center gap-0.5">
-          <button
-            type="button"
-            onClick={decrement}
-            disabled={!canDecrement}
-            aria-label={`Færre ${item.name}`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            <Minus className="h-4 w-4" />
-          </button>
+          {!multi && (
+            <button
+              type="button"
+              onClick={decrement}
+              disabled={!canDecrement}
+              aria-label={`Færre ${item.name}`}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={startEdit}
@@ -737,15 +780,26 @@ function ShoppingRow({
           >
             {amount || 'antall'}
           </button>
-          <button
-            type="button"
-            onClick={increment}
-            aria-label={`Flere ${item.name}`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+          {!multi && (
+            <button
+              type="button"
+              onClick={increment}
+              aria-label={`Flere ${item.name}`}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          )}
         </div>
+      )}
+      {multi && (
+        <AmountsDialog
+          isOpen={dialogOpen}
+          onOpenChange={setDialogOpen}
+          item={item}
+          amounts={effective}
+          onSetQuantity={onSetQuantity}
+        />
       )}
       <button
         type="button"
@@ -758,5 +812,113 @@ function ShoppingRow({
         <X className="h-4 w-4" />
       </button>
     </li>
+  )
+}
+
+/**
+ * Per-unit editor for a line that aggregates several units («2 stk + 200 g»):
+ * one stepper row per amount bucket, each adjustable independently (writing a
+ * per-unit override through the same offline outbox as the inline steppers, so
+ * the rows update live while the dialog is open). Reset restores the computed
+ * amounts.
+ */
+function AmountsDialog({
+  isOpen,
+  onOpenChange,
+  item,
+  amounts,
+  onSetQuantity,
+}: {
+  isOpen: boolean
+  onOpenChange: (open: boolean) => void
+  item: ShoppingItem
+  amounts: { quantity: number; unit: string | null }[]
+  onSetQuantity: (key: string, unit: string | null, quantity: number | null) => void
+}) {
+  return (
+    <ModalOverlay
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      isDismissable
+      className="fixed inset-0 z-30 flex items-start justify-center bg-black/40 p-4 pt-[10vh] backdrop-blur-sm"
+    >
+      <Modal className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl outline-none">
+        <Dialog className="outline-none">
+          <Heading slot="title" className="text-lg font-semibold text-stone-900">
+            {item.name}
+          </Heading>
+          <p className="mt-1 text-sm text-stone-500">
+            Varen står med flere enheter — juster hver for seg.
+          </p>
+
+          <ul className="mt-3 flex flex-col divide-y divide-stone-100">
+            {amounts.map((a) => {
+              const unitKey = unitKeyOf(a.unit)
+              const canDecrement = a.quantity > 1
+              return (
+                <li
+                  key={unitKey}
+                  className="flex items-center justify-between gap-3 py-2"
+                >
+                  <span className="text-sm text-stone-600">
+                    {a.unit ?? 'antall'}
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSetQuantity(item.key, unitKey, +(a.quantity - 1).toFixed(2))
+                      }
+                      disabled={!canDecrement}
+                      aria-label={`Færre ${item.name} (${a.unit ?? 'antall'})`}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-30"
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <span className="min-w-[4.5rem] text-center text-sm font-medium tabular-nums text-stone-900">
+                      {fmtAmount(a)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSetQuantity(item.key, unitKey, +(a.quantity + 1).toFixed(2))
+                      }
+                      aria-label={`Flere ${item.name} (${a.unit ?? 'antall'})`}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          {item.hasUnquantified && (
+            <p className="mt-1 text-xs text-stone-400">
+              + noe uten oppgitt mengde («etter smak» o.l.)
+            </p>
+          )}
+
+          <div className="mt-4 flex items-center justify-between gap-2">
+            {hasOverrides(item) ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onPress={() => onSetQuantity(item.key, null, null)}
+                className="text-stone-500"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Tilbakestill
+              </Button>
+            ) : (
+              <span />
+            )}
+            <Button size="sm" onPress={() => onOpenChange(false)}>
+              Ferdig
+            </Button>
+          </div>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   )
 }

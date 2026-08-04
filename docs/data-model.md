@@ -60,29 +60,40 @@ recipes. See [shopping-list-model below](#shopping-list-flow).
   ad-hoc (`source_recipe_id` null). Persists until explicitly removed.
 - `shopping_check` — per-item state, keyed by `(scope_id, item_key)`:
   - `checked` — "ticked off" state. Syncs in realtime via Electric.
-  - `override_quantity` (nullable) — a **manual quantity override** for the
-    aggregated line. When set, it replaces the summed quantity on display (the
-    contributing entries are untouched, so recipe linkage / on-list status are
-    preserved); null means "use the computed sum". Edited via `setItemQuantity`
-    and applied at read time in `getShoppingList`. It lives here (not on
-    `shopping_entry`) precisely so it survives recipe re-aggregation, like
-    `checked`. It rides the same Electric `shopping` shape, so an edit syncs
-    across devices: locally it's optimistic via the `['shopping']` query cache;
-    remotely the streamed override change triggers a `['shopping']` refetch
-    (signal→refetch, like the list contents — see
-    [realtime-shopping-list.md](./realtime-shopping-list.md)).
+  - `override_amounts` (nullable jsonb) — **manual per-unit quantity
+    overrides** for the aggregated line, unit key → quantity (`''` = a bare
+    count), e.g. `{"stk": 3, "g": 250}`. On display each override replaces the
+    computed bucket of the same unit dimension (`applyOverrides` in
+    `src/lib/shopping-aggregate.ts`); the contributing entries are untouched,
+    so recipe linkage / on-list status are preserved. Null/empty means "use the
+    computed amounts". Edited via `setItemQuantity` (one unit at a time, or
+    clear-all with unit+quantity null) and applied at read time in
+    `getShoppingList`. It lives here (not on `shopping_entry`) precisely so it
+    survives recipe re-aggregation, like `checked`. It rides the same Electric
+    `shopping` shape, so an edit syncs across devices: locally it's optimistic
+    via the offline outbox overlay; remotely the streamed override change
+    triggers a `['shopping']` refetch (signal→refetch, like the list contents —
+    see [realtime-shopping-list.md](./realtime-shopping-list.md)).
 
 ### item_key — the merge key
 
 ```
-item_key = `${name.trim().toLowerCase()}__${(unit ?? '').trim().toLowerCase()}`
+item_key = name.trim().toLowerCase()
 ```
 
-Defined by `itemKey()` in `src/server/shopping.ts`. Two contributions with the
-same name+unit (e.g. garlic from two recipes) **merge into one displayed line**,
-summing quantities. `shopping_check` rows are keyed by the same `item_key`, so
-ticking survives recipe re-aggregation. **If you change the key formula, change
-it in one place** — checks and entries must agree.
+Defined by `shoppingItemKey()` in `src/lib/shopping-aggregate.ts` (the server's
+`itemKey` is an alias). The unit is deliberately **not** part of the key: the
+same ingredient from two recipes merges into **one displayed line** even when
+their units differ. Quantities are summed **per unit** into buckets
+(`ShoppingItem.amounts`), with compatible metric units normalized first
+(g/kg → one bucket, ml/cl/dl/l → one bucket, via `mergeAmounts`) — so a line
+can read «2 stk + 200 g». Entries store one row per (recipe, name, unit).
+`shopping_check` rows are keyed by the same `item_key`, so ticking survives
+recipe re-aggregation; quantity overrides are per-unit (`override_amounts`
+jsonb), since the key no longer implies one — single-unit lines edit inline,
+multi-unit lines open a per-unit dialog. **If you change the key formula,
+change it in one place** — checks and entries must agree. (Migration `0006`
+rewrote all stored keys from the old `name__unit` form to name-only.)
 
 ### shopping-list flow
 

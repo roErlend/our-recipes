@@ -5,19 +5,33 @@
  * no drift between the SSR snapshot and the Electric-synced live list.
  */
 
+/** One displayed amount on a line — a per-unit bucket, already normalized. */
+export interface ShoppingAmount {
+  quantity: number
+  unit: string | null
+}
+
 export interface ShoppingItem {
   key: string
   name: string
-  unit: string | null
-  /** Summed quantity across contributions, or null if none of them were quantified. */
-  quantity: number | null
   /**
-   * Manual per-line quantity override, or null when none is set. The displayed
-   * amount is `overrideQuantity ?? quantity` — keeping these separate (rather
-   * than baking the override into `quantity`) lets the client revert a cleared
-   * override to the computed sum optimistically, without a round-trip.
+   * Per-unit amounts. Contributions merge by ingredient *name*, so the same
+   * item from two recipes lands on one line even when their units differ —
+   * «2 stk + 200 g» is one line, one checkbox. Compatible metric units are
+   * normalized into a single bucket (900 g + 0,3 kg → 1,2 kg). Empty when no
+   * contribution was quantified.
    */
-  overrideQuantity: number | null
+  amounts: ShoppingAmount[]
+  /**
+   * Manual per-unit overrides: unit key (lowercased, '' = unitless) → quantity.
+   * Applied onto `amounts` at display time via {@link applyOverrides} — an
+   * override replaces the computed bucket of the same unit dimension, so each
+   * unit of a multi-unit line («2 stk + 200 g») is adjustable independently.
+   * Kept separate from `amounts` (rather than baked in) so the client can
+   * revert a cleared override to the computed amounts optimistically, without
+   * a round-trip. Empty object = no overrides.
+   */
+  overrides: Record<string, number>
   /** True when at least one contributing entry had no numeric quantity (e.g. "to taste"). */
   hasUnquantified: boolean
   /** Titles of the recipes that contributed this item (empty for ad-hoc items). */
@@ -47,12 +61,133 @@ export interface ShoppingList {
   scopeId: string
 }
 
-/** Normalized grouping key for a shopping line — `name__unit`, lowercased.
+/** Normalized grouping key for a shopping line — the lowercased name. Unit is
+ *  deliberately NOT part of the key: the same ingredient in different units is
+ *  still one thing to buy, so it merges into one line (with per-unit amounts).
  *  Mirrored by `shopping_entry.item_key`; shared by the server and the client
  *  picker so a selected ingredient maps to exactly the line it produces. */
-export function shoppingItemKey(name: string, unit: string | null | undefined) {
-  return `${name.trim().toLowerCase()}__${(unit ?? '').trim().toLowerCase()}`
+export function shoppingItemKey(name: string) {
+  return name.trim().toLowerCase()
 }
+
+/* --------------------------- unit normalization -------------------------- */
+
+/** Metric mass units → grams. */
+const MASS: Record<string, number> = { g: 1, gram: 1, kg: 1000 }
+/** Metric volume units → millilitres. */
+const VOLUME: Record<string, number> = { ml: 1, cl: 10, dl: 100, l: 1000, liter: 1000 }
+
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+/** Pick the friendliest display unit for a normalized bucket total. */
+function displayAmount(dim: 'mass' | 'volume', base: number): ShoppingAmount {
+  if (dim === 'mass') {
+    return base >= 1000
+      ? { quantity: round2(base / 1000), unit: 'kg' }
+      : { quantity: round2(base), unit: 'g' }
+  }
+  if (base >= 1000) return { quantity: round2(base / 1000), unit: 'l' }
+  if (base >= 100) return { quantity: round2(base / 100), unit: 'dl' }
+  return { quantity: round2(base), unit: 'ml' }
+}
+
+/**
+ * Fold raw (quantity, unit) contributions into displayed per-unit amounts:
+ * compatible metric units are converted and summed into one bucket (mass /
+ * volume); everything else ("ss", "stk", "fedd", unitless numbers…) sums within
+ * its own unit. Buckets keep first-appearance order. Contributions without a
+ * quantity only set `hasUnquantified`.
+ */
+export function mergeAmounts(
+  contributions: { quantity: number | null; unit: string | null }[],
+): { amounts: ShoppingAmount[]; hasUnquantified: boolean } {
+  interface Bucket {
+    dim: 'mass' | 'volume' | 'other'
+    total: number
+    /** Display label for 'other' buckets — the first-seen spelling. */
+    label: string | null
+  }
+  const buckets = new Map<string, Bucket>()
+  let hasUnquantified = false
+
+  for (const c of contributions) {
+    if (c.quantity == null) {
+      hasUnquantified = true
+      continue
+    }
+    const u = (c.unit ?? '').trim()
+    const lower = u.toLowerCase()
+    if (lower in MASS) {
+      const b = buckets.get('mass') ?? { dim: 'mass' as const, total: 0, label: null }
+      b.total += c.quantity * MASS[lower]
+      buckets.set('mass', b)
+    } else if (lower in VOLUME) {
+      const b = buckets.get('volume') ?? { dim: 'volume' as const, total: 0, label: null }
+      b.total += c.quantity * VOLUME[lower]
+      buckets.set('volume', b)
+    } else {
+      const b = buckets.get(lower) ?? { dim: 'other' as const, total: 0, label: u || null }
+      b.total += c.quantity
+      buckets.set(lower, b)
+    }
+  }
+
+  const amounts = [...buckets.values()].map((b) =>
+    b.dim === 'other'
+      ? { quantity: round2(b.total), unit: b.label }
+      : displayAmount(b.dim, b.total),
+  )
+  return { amounts, hasUnquantified }
+}
+
+/* ------------------------------- overrides ------------------------------- */
+
+/** Normalized unit key for the per-unit override map ('' = unitless). */
+export function unitKeyOf(unit: string | null | undefined) {
+  return (unit ?? '').trim().toLowerCase()
+}
+
+/**
+ * The bucket a unit belongs to: 'mass' / 'volume' for the convertible metric
+ * units, else the unit key itself. Overrides match computed buckets by
+ * dimension, so an override saved as «kg» still replaces a bucket that happens
+ * to display in «g» today.
+ */
+export function unitDimension(unit: string | null | undefined): string {
+  const key = unitKeyOf(unit)
+  if (key in MASS) return 'mass'
+  if (key in VOLUME) return 'volume'
+  return key
+}
+
+/**
+ * Apply per-unit manual overrides onto the computed amounts: an override
+ * replaces the computed bucket of the same unit dimension (shown in the
+ * override's own unit); overrides with no matching bucket become buckets of
+ * their own. Pure — used identically by the row display and the edit dialog.
+ */
+export function applyOverrides(
+  amounts: ShoppingAmount[],
+  overrides: Record<string, number>,
+): ShoppingAmount[] {
+  const entries = Object.entries(overrides)
+  if (!entries.length) return amounts
+
+  const used = new Set<string>()
+  const result = amounts.map((a) => {
+    const dim = unitDimension(a.unit)
+    const hit = entries.find(([unitKey]) => unitDimension(unitKey) === dim)
+    if (!hit) return a
+    used.add(hit[0])
+    return { quantity: hit[1], unit: hit[0] || null }
+  })
+  for (const [unitKey, quantity] of entries) {
+    if (!used.has(unitKey)) result.push({ quantity, unit: unitKey || null })
+  }
+  return result
+}
+
+/* ------------------------------ aggregation ------------------------------ */
 
 /** One `shopping_entry` contribution, in the shape the aggregation needs. */
 export interface ShoppingEntryInput {
@@ -66,9 +201,9 @@ export interface ShoppingEntryInput {
 
 /**
  * Fold per-contribution entries into the displayed list: merge by item key
- * (summing quantities, collecting recipe sources), resolve each line's category
- * and checked state via the supplied lookups. Items sort checked-last, then by
- * name.
+ * (bucketing quantities per unit via {@link mergeAmounts}, collecting recipe
+ * sources), resolve each line's category and checked state via the supplied
+ * lookups. Items sort checked-last, then by name.
  */
 export function aggregateShoppingEntries(
   entries: ShoppingEntryInput[],
@@ -81,39 +216,38 @@ export function aggregateShoppingEntries(
     checkedAt?: (itemKey: string) => number | null
   },
 ): { recipes: { id: string; title: string }[]; items: ShoppingItem[] } {
-  const map = new Map<string, ShoppingItem>()
+  const grouped = new Map<string, ShoppingEntryInput[]>()
   const recipes = new Map<string, string>() // id -> title
 
   for (const e of entries) {
     if (e.sourceRecipeId && e.sourceTitle) recipes.set(e.sourceRecipeId, e.sourceTitle)
-    const existing = map.get(e.itemKey)
-    if (existing) {
-      if (e.quantity != null) {
-        existing.quantity = (existing.quantity ?? 0) + e.quantity
-      } else {
-        existing.hasUnquantified = true
-      }
-      if (e.sourceTitle && !existing.sources.includes(e.sourceTitle)) {
-        existing.sources.push(e.sourceTitle)
-      }
-    } else {
-      map.set(e.itemKey, {
-        key: e.itemKey,
-        name: e.name.trim(),
-        unit: e.unit,
-        quantity: e.quantity ?? null,
-        overrideQuantity: null,
-        hasUnquantified: e.quantity == null,
-        sources: e.sourceTitle ? [e.sourceTitle] : [],
-        category: opts.resolveCategory(e.name),
-        isStaple: opts.isStaple?.(e.name) ?? false,
-        checked: opts.isChecked(e.itemKey),
-        checkedAt: opts.checkedAt?.(e.itemKey) ?? null,
-      })
-    }
+    const list = grouped.get(e.itemKey)
+    if (list) list.push(e)
+    else grouped.set(e.itemKey, [e])
   }
 
-  const items = [...map.values()].sort((a, b) => {
+  const items = [...grouped.entries()].map(([key, group]): ShoppingItem => {
+    const { amounts, hasUnquantified } = mergeAmounts(group)
+    const sources: string[] = []
+    for (const e of group) {
+      if (e.sourceTitle && !sources.includes(e.sourceTitle)) sources.push(e.sourceTitle)
+    }
+    const name = group[0].name.trim()
+    return {
+      key,
+      name,
+      amounts,
+      overrides: {},
+      hasUnquantified,
+      sources,
+      category: opts.resolveCategory(name),
+      isStaple: opts.isStaple?.(name) ?? false,
+      checked: opts.isChecked(key),
+      checkedAt: opts.checkedAt?.(key) ?? null,
+    }
+  })
+
+  items.sort((a, b) => {
     if (a.checked !== b.checked) return a.checked ? 1 : -1
     // Among checked items, most-recently-checked first; otherwise by name.
     if (a.checked)

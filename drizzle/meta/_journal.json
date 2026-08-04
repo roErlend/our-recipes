@@ -43,6 +43,27 @@
       "when": 1784380990874,
       "tag": "0005_thankful_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785837859480,
+      "tag": "0006_high_molecule_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785839180924,
+      "tag": "0007_fresh_nehzno",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785839201365,
+      "tag": "0008_purple_catseye",
+      "breakpoints": true
     }
   ]
 }

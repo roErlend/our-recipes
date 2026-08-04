@@ -52,7 +52,7 @@ export const Route = createFileRoute('/api/shapes/shopping')({
         upstream.searchParams.set('table', 'shopping_check')
         upstream.searchParams.set(
           'columns',
-          'user_id,item_key,checked,override_quantity,updated_at',
+          'user_id,item_key,checked,override_amounts,updated_at',
         )
         upstream.searchParams.set('where', 'user_id = $1')
         upstream.searchParams.set('params[1]', householdId)
