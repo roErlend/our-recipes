@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   useMutation,
   useQueryClient,
@@ -38,6 +38,30 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: 'new', label: 'Nyeste' },
   { value: 'az', label: 'Alfabetisk (A–Å)' },
 ]
+
+// The chosen sort is a per-device preference (like theme/handedness): stored
+// in localStorage and restored on later visits. An explicit ?sort= in the URL
+// wins over the stored value; picking the default drops the stored key.
+const SORT_STORAGE_KEY = 'recipe-sort'
+
+function getStoredSort(): SortKey | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const value = window.localStorage.getItem(SORT_STORAGE_KEY)
+    return value === 'new' || value === 'az' ? value : null
+  } catch {
+    return null
+  }
+}
+
+function storeSort(value: SortKey) {
+  try {
+    if (value === 'rating') window.localStorage.removeItem(SORT_STORAGE_KEY)
+    else window.localStorage.setItem(SORT_STORAGE_KEY, value)
+  } catch {
+    // Storage unavailable — the choice still applies for this session.
+  }
+}
 
 // Sort comparators applied *within* the shopping-list grouping (list items
 // always float to the top). All read from the already-fetched list, so changing
@@ -97,13 +121,21 @@ function RecipesPage() {
   const {
     q: initialSearch = '',
     tags: initialTags = [],
-    sort: initialSort = 'rating',
+    sort: urlSort,
     draw: initialDraw = [],
   } = Route.useSearch()
   const [search, setSearch] = useState(initialSearch)
   // Selected tag filter, also URL-seeded on mount and kept in the URL below.
   const [activeTags, setActiveTags] = useState<string[]>(initialTags)
-  const [sort, setSort] = useState<SortKey>(initialSort)
+  const [sort, setSort] = useState<SortKey>(urlSort ?? 'rating')
+  // Restore the stored sort preference when the URL doesn't pin one. Runs
+  // after mount so server and first client render agree (SSR-safe, like
+  // useHandedness); the one-frame default order is the accepted trade-off.
+  useEffect(() => {
+    if (urlSort) return
+    const stored = getStoredSort()
+    if (stored) setSort(stored)
+  }, [urlSort])
   // The tag list is tucked behind a toggle so it never crowds the page; open it
   // by default when arriving with a filter already applied (e.g. a deep link).
   const [showFilters, setShowFilters] = useState(initialTags.length > 0)
@@ -153,6 +185,7 @@ function RecipesPage() {
 
   const onSortChange = (value: SortKey) => {
     setSort(value)
+    storeSort(value)
     void navigate({
       search: (s) => ({ ...s, sort: value === 'rating' ? undefined : value }),
       replace: true,
