@@ -11,7 +11,7 @@ export function getRouter() {
         // Two-person app, data changes rarely, and our own mutations already
         // invalidate the cache — so cache aggressively for instant navigation.
         // Returning to the tab still revalidates (refetchOnWindowFocus is on by
-        // default), and the shopping list stays live via Electric regardless.
+        // default), and the shopping list polls on its own regardless.
         staleTime: 5 * 60_000, // 5 min: revisits within a session are instant
         gcTime: 60 * 60_000, // keep cached an hour so back-nav stays warm
       },

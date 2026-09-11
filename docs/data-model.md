@@ -59,7 +59,8 @@ recipes. See [shopping-list-model below](#shopping-list-flow).
   (`source_recipe_id` set, `source_title` denormalized for display) or typed
   ad-hoc (`source_recipe_id` null). Persists until explicitly removed.
 - `shopping_check` — per-item state, keyed by `(scope_id, item_key)`:
-  - `checked` — "ticked off" state. Syncs in realtime via Electric.
+  - `checked` — "ticked off" state (plus `updated_at`, which orders the
+    "Avhuket" section most-recently-checked first).
   - `override_amounts` (nullable jsonb) — **manual per-unit quantity
     overrides** for the aggregated line, unit key → quantity (`''` = a bare
     count), e.g. `{"stk": 3, "g": 250}`. On display each override replaces the
@@ -69,11 +70,9 @@ recipes. See [shopping-list-model below](#shopping-list-flow).
     computed amounts". Edited via `setItemQuantity` (one unit at a time, or
     clear-all with unit+quantity null) and applied at read time in
     `getShoppingList`. It lives here (not on `shopping_entry`) precisely so it
-    survives recipe re-aggregation, like `checked`. It rides the same Electric
-    `shopping` shape, so an edit syncs across devices: locally it's optimistic
-    via the offline outbox overlay; remotely the streamed override change
-    triggers a `['shopping']` refetch (signal→refetch, like the list contents —
-    see [realtime-shopping-list.md](./realtime-shopping-list.md)).
+    survives recipe re-aggregation, like `checked`. Locally an edit is
+    optimistic via the offline outbox overlay; the other device picks it up on
+    its next poll (see [realtime-shopping-list.md](./realtime-shopping-list.md)).
 
 ### item_key — the merge key
 

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLiveQuery } from '@tanstack/react-db'
 import {
   useMutation,
   useQueryClient,
@@ -36,10 +35,6 @@ import {
   ingredientsQueryOptions,
   shoppingQueryOptions,
 } from '@/lib/queries'
-import {
-  shoppingChecksCollection,
-  shoppingEntriesCollection,
-} from '@/lib/shopping-collection'
 import { type CatalogIngredient } from '@/server/ingredients'
 import {
   addManualItem,
@@ -118,21 +113,20 @@ function formatAmount(item: ShoppingItem) {
   return parts.join(' + ')
 }
 
-/** True only after the first client render, so we never run the Electric live query during SSR. */
+/**
+ * How often the list re-pulls itself while the tab is visible and online. This
+ * is what keeps two phones in sync: the other member's ticks and additions show
+ * up within one interval. For a two-person household a few seconds reads as
+ * live, and it needs no infrastructure beyond the existing server function.
+ */
+const POLL_INTERVAL_MS = 4000
+
+/** True only after the first client render, so the outbox overlay (client-only
+ *  IndexedDB state) never takes part in server rendering / hydration. */
 function useMounted() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   return mounted
-}
-
-/** Wait for a write's txid to round-trip via Electric before dropping its pending
- *  overlay — best-effort, so a missing/stalled sync never blocks the flush. */
-async function awaitTxIdSafe(txid: number) {
-  try {
-    await shoppingChecksCollection.utils.awaitTxId(txid, 8000)
-  } catch {
-    /* timed out or not syncing — proceed anyway */
-  }
 }
 
 /**
@@ -145,21 +139,19 @@ function useShoppingFlush() {
   const execute = useCallback(
     async (op: OutboxOp) => {
       if (op.type === 'check') {
-        const { txid } = await setShoppingChecked({
-          data: { key: op.key, checked: op.value },
-        })
-        await awaitTxIdSafe(txid)
+        await setShoppingChecked({ data: { key: op.key, checked: op.value } })
       } else {
-        const { txid } = await setItemQuantity({
+        await setItemQuantity({
           data: { key: op.key, unit: op.unit ?? null, quantity: op.value },
         })
-        await awaitTxIdSafe(txid)
-        // The displayed amount is server-computed, so pull the fresh snapshot
-        // before the pending overlay is dropped.
-        await queryClient.refetchQueries({
-          queryKey: shoppingQueryOptions().queryKey,
-        })
       }
+      // The snapshot is the synced truth the overlay falls back to, so pull a
+      // fresh one *before* the pending op is dropped — otherwise the row would
+      // flick back to its stale value until the next poll. (Cancels any poll
+      // already in flight so a pre-write response can't land afterwards.)
+      await queryClient.refetchQueries({
+        queryKey: shoppingQueryOptions().queryKey,
+      })
     },
     [queryClient],
   )
@@ -182,8 +174,8 @@ function useShoppingFlush() {
   return flush
 }
 
-/** Add/remove mutations for the persisted list — kept on TanStack Query (the
- *  realtime checkbox sync is separate, via the Electric collection below). */
+/** Add/remove mutations for the persisted list — plain TanStack Query mutations
+ *  (checks and quantities go through the offline outbox instead, see below). */
 function useShoppingMutations() {
   const queryClient = useQueryClient()
   const shoppingKey = shoppingQueryOptions().queryKey
@@ -263,14 +255,22 @@ function useShoppingMutations() {
 }
 
 function ShoppingPage() {
-  const { data } = useSuspenseQuery(shoppingQueryOptions())
+  const online = useOnline()
+  // The server snapshot is the single source of truth (checks, overrides and
+  // contents alike). Polling keeps it fresh across devices; it pauses while the
+  // tab is hidden or the phone is offline, and refetches on focus/reconnect.
+  const { data } = useSuspenseQuery({
+    ...shoppingQueryOptions(),
+    refetchInterval: online ? POLL_INTERVAL_MS : false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  })
   const mounted = useMounted()
 
-  // Before mount we render from the server's snapshot (no live query); once
-  // mounted the realtime collections take over and sync checks + list contents
-  // across devices.
+  // Before mount we render straight from the snapshot; once mounted the outbox
+  // overlay (pending checks/quantities) is layered on top.
   return mounted ? (
-    <RealtimeShoppingList list={data} />
+    <SyncedShoppingList list={data} />
   ) : (
     <ShoppingView
       list={data}
@@ -284,72 +284,22 @@ function ShoppingPage() {
   )
 }
 
-function RealtimeShoppingList({ list }: { list: ShoppingList }) {
-  const queryClient = useQueryClient()
-  const { data: checkRows } = useLiveQuery((q) =>
-    q.from({ c: shoppingChecksCollection }),
-  )
-  // Keep the list *contents* in sync across devices. The shopping_entry rows
-  // stream in via Electric; whenever they change — a recipe or item added or
-  // removed on either device — we refetch the server-aggregated list. The
-  // server stays the single source of truth for merging/categorizing (and for
-  // each recipe's "on the list" flag); Electric just tells us when to re-pull.
-  // (The checked state below syncs directly: it's a simple per-row overlay, so
-  // reading it straight from the collection keeps toggling instant/optimistic.)
-  const { data: entryRows } = useLiveQuery((q) =>
-    q.from({ e: shoppingEntriesCollection }),
-  )
-  const entriesSig = (entryRows ?? [])
-    .map((r) => `${r.id}:${r.item_key}:${r.quantity}:${r.source_title}`)
-    .sort()
-    .join('|')
-  // Manual quantity overrides ride the same shopping_check shape as the checks.
-  // The displayed amount is server-computed, so (unlike a checkbox) we can't
-  // just overlay it — instead we refetch when an override changes on either
-  // device. Keyed on override values only (not `checked`) so plain toggles,
-  // which need no refetch, don't trigger one.
-  const overridesSig = (checkRows ?? [])
-    .filter((r) => r.override_amounts && Object.keys(r.override_amounts).length)
-    .map((r) => `${r.item_key}:${JSON.stringify(r.override_amounts)}`)
-    .sort()
-    .join('|')
-  const syncSig = `${entriesSig}||${overridesSig}`
-  // Skip the first sync (the snapshot already reflects it); refetch on changes.
-  const lastSig = useRef<string | null>(null)
-  useEffect(() => {
-    if (lastSig.current !== null && lastSig.current !== syncSig) {
-      queryClient.invalidateQueries({ queryKey: shoppingQueryOptions().queryKey })
-    }
-    lastSig.current = syncSig
-  }, [syncSig, queryClient])
-
+/** The snapshot with the offline outbox layered on top: pending checks and
+ *  quantity edits win over the server value until they have flushed. */
+function SyncedShoppingList({ list }: { list: ShoppingList }) {
   const online = useOnline()
   const { pendingChecked, pendingQuantity, count } = useOutbox()
   const flush = useShoppingFlush()
 
-  const checkedByKey = new Map((checkRows ?? []).map((r) => [r.item_key, r.checked]))
-  // When each check was last written, from the synced row's updated_at.
-  const checkedAtByKey = new Map(
-    (checkRows ?? []).map((r) => [
-      r.item_key,
-      r.updated_at ? new Date(r.updated_at).getTime() : null,
-    ]),
-  )
-
   // The outbox is both the durable queue and the optimistic overlay: a pending
-  // check/override wins over the synced server value until it has flushed.
+  // check wins over the snapshot's value until it has flushed.
   const isChecked = (item: ShoppingItem) =>
-    pendingChecked.has(item.key)
-      ? pendingChecked.get(item.key)!
-      : (checkedByKey.get(item.key) ?? false)
+    pendingChecked.has(item.key) ? pendingChecked.get(item.key)! : item.checked
 
   // A just-tapped (still-pending) check floats to the top of the checked
-  // section until it syncs; otherwise use the synced timestamp (falling back to
-  // the server snapshot's value).
+  // section until it syncs; otherwise use the server's timestamp.
   const checkedAt = (item: ShoppingItem) =>
-    pendingChecked.get(item.key) === true
-      ? Number.MAX_SAFE_INTEGER
-      : (checkedAtByKey.get(item.key) ?? item.checkedAt)
+    pendingChecked.get(item.key) === true ? Number.MAX_SAFE_INTEGER : item.checkedAt
 
   // Replay pending per-unit edits (oldest-first) onto each item's overrides —
   // the same rules the server applies, so the optimistic view matches what the

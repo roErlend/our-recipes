@@ -37,9 +37,10 @@ is configured for `snake_case` and reads `DATABASE_URL` from `.env`
 | `DATABASE_URL`            | Neon connection string                                         |
 | `BETTER_AUTH_SECRET`      | 32+ char random string                                         |
 | `BETTER_AUTH_URL`         | App base URL (`http://localhost:3001` in dev)                  |
-| `ELECTRIC_SOURCE_ID`      | Electric Cloud source id (realtime)                            |
-| `ELECTRIC_SOURCE_SECRET`  | Electric Cloud source secret (server-side only)                |
-| `ELECTRIC_URL`            | optional; defaults to `https://api.electric-sql.cloud`         |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` / `GMAIL_SENDER_NAME` | Nodemailer sender for verification + invite mails |
+
+(`ELECTRIC_*` variables are obsolete since 2026-09 and can be removed from `.env`
+and Vercel.)
 
 Restart the dev server after changing any of these (read at boot).
 

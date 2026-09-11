@@ -1,8 +1,7 @@
 /**
  * Pure, client-safe shopping-list aggregation. Lives in `lib` (no db imports) so
- * both the server (`getShoppingList`) and the realtime client view can fold the
- * same `shopping_entry` rows into the same displayed list — one source of truth,
- * no drift between the SSR snapshot and the Electric-synced live list.
+ * the server (`getShoppingList`) folds `shopping_entry` rows into the displayed
+ * list with pure, unit-testable code; a client could reuse it without drift.
  */
 
 /** One displayed amount on a line — a per-unit bucket, already normalized. */
@@ -54,10 +53,7 @@ export interface ShoppingList {
   /** Recipes currently contributing items to the list. */
   recipes: { id: string; title: string }[]
   items: ShoppingItem[]
-  /**
-   * The household scope id these checks belong to. The client needs it to build
-   * optimistic rows for the realtime `shopping_check` collection (Electric).
-   */
+  /** The household scope id this list belongs to. */
   scopeId: string
 }
 

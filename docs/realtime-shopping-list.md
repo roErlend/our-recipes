@@ -1,112 +1,65 @@
-# Realtime shopping list (Electric + TanStack DB)
+# Shared shopping list: cross-device sync (polling)
 
-The shared shopping list syncs across both household members via **Electric Cloud
-+ TanStack DB**. This is the one piece of infrastructure beyond the otherwise
-simple stack, and its gotchas aren't visible from the code alone.
+Both household members see one shopping list. Since September 2026 it stays in
+sync by **polling the server snapshot** — no sync engine, no extra
+infrastructure. The offline outbox (see
+[offline-shopping-mode.md](offline-shopping-mode.md)) is the optimistic layer on
+top.
 
-## What syncs, and how
+> **History.** Until 2026-09-11 the list synced through Electric Cloud + TanStack
+> DB (two read-only shapes over `shopping_check` and `shopping_entry`, auth
+> proxies under `src/routes/api/shapes/`, txid round-trips). Electric Cloud was
+> shut down that day (Electric joined Databricks; the engine stays open source),
+> which made every check render as unchecked. Polling replaced it as the
+> simplest fix for a two-person app. If realtime ever matters again, the
+> candidates are self-hosting Electric or whatever Neon ships as its successor —
+> the server functions and the outbox are unchanged, so only the read side would
+> move.
 
-Two Electric **shapes** sync, each via an auth proxy under `src/routes/api/shapes/`
-and a TanStack DB collection in `src/lib/shopping-collection.ts`:
+## How it works
 
-| Shape          | Table            | Columns                                   | Client uses it to… |
-| -------------- | ---------------- | ----------------------------------------- | ------------------ |
-| `shopping`     | `shopping_check` | `checked` / `override_amounts`           | `checked` → **read directly** (synced truth; the optimistic overlay is the offline outbox, not the collection); `override_amounts` → **signal** (refetch on change) |
-| `shopping-entries` | `shopping_entry` | list contents                         | **signal only** — detect contents changing, then refetch |
+Everything lives in `src/routes/_authed/shopping.tsx`:
 
-> Both collections are **read-only**. Writes never go through TanStack DB's
-> optimistic transactions — see "Checks + quantities" below and
-> [offline-shopping-mode.md](offline-shopping-mode.md).
+1. `getShoppingList` (server fn, `src/server/shopping.ts`) returns the whole
+   list: aggregated items, each item's `checked` / `checkedAt`, manual quantity
+   `overrides`, and the contributing recipes. It is the **single source of
+   truth** for the page.
+2. `ShoppingPage` reads it with `useSuspenseQuery` and `refetchInterval:
+   POLL_INTERVAL_MS` (4 s). TanStack Query only polls while the tab is visible
+   (`refetchIntervalInBackground` is off) and the interval is disabled while
+   `navigator.onLine` is false. It also refetches on window focus and reconnect.
+   So the other member's ticks, additions and quantity edits show up within one
+   interval.
+3. `SyncedShoppingList` layers the **outbox** on top: a pending check or quantity
+   op wins over the snapshot until it has flushed. A pending check also floats to
+   the top of the "Avhuket" section (`checkedAt = MAX_SAFE_INTEGER`).
 
-> The `shopping` shape carries two columns with *different* sync styles.
-> `checked` is read straight from the collection (a per-row overlay → instant
-> optimistic toggle). `override_amounts` (manual quantity edit) is server-applied
-> into the displayed amount, so it can't be a simple overlay — instead its change
-> is a **signal**: a signature over the override values (NOT `checked`, so plain
-> toggles don't trigger it) drives a `['shopping']` refetch. Locally the edit is
-> optimistic via the query cache; the signal makes it land on the other device.
+## Writes
 
-Data path: browser collection ← `/api/shapes/*` auth proxy ← Electric Cloud
-(`https://api.electric-sql.cloud/v1/shape`) ← tails the Neon WAL. **Writes never
-go through Electric** — they go through the existing server functions
-(`setShoppingChecked`, `addRecipeToShopping`, …) → Postgres → Electric streams the
-change back to every browser.
+Checks and quantity edits never mutate the query cache directly:
 
-## Checks + quantities: read-only collection, writes via the offline outbox
+- Toggling enqueues a `check` op, editing an amount a `quantity` op (coalesced per
+  item / per unit) — `enqueueOp` in `src/lib/offline.ts`.
+- `useShoppingFlush` replays them oldest-first through `setShoppingChecked` /
+  `setItemQuantity`, then **awaits a `refetchQueries(['shopping'])` before the op
+  is dropped**. That order matters: the overlay falls back to the snapshot, so the
+  snapshot must already contain the write or the row would flick back to its old
+  value until the next poll. `refetchQueries` cancels a poll that is already in
+  flight, so a response captured before the write can't land afterwards.
+- Adding/removing items and "Fjern avhukede" are ordinary TanStack Query
+  mutations with optimistic updates that invalidate `['shopping']`.
 
-`shopping_check` rows are read straight from the collection via `useLiveQuery` for
-the **synced server truth**. The collection is **read-only** — it defines no
-`onInsert/onUpdate/onDelete`. Writes (check toggles and quantity overrides) instead
-go through the **durable offline outbox** in `src/lib/offline.ts` (see
-[offline-shopping-mode.md](offline-shopping-mode.md)):
+## Things to keep in mind
 
-- Toggling enqueues a `check` op; editing an amount enqueues a `quantity` op
-  (coalesced per item). The **outbox is the optimistic overlay** — a pending op
-  wins over the synced value until it has flushed, so the box flips instantly and
-  *stays* flipped even if the network is down (or the page reloads offline).
-- `flushOutbox` replays ops via the server fns (`setShoppingChecked` /
-  `setItemQuantity`), which run the write **and** `SELECT pg_current_xact_id()` in
-  one transaction and return the `txid`. The flusher waits for that txid via
-  `shoppingChecksCollection.utils.awaitTxId(...)` before dropping the pending
-  overlay, so there's no flicker between "queued" and "synced".
-
-> Earlier this path used the collection's own optimistic transactions
-> (`collection.update` → `onUpdate` → server fn → txid match). That **rolled the
-> optimistic flip back when the write failed offline** — the whole point of the
-> outbox is to keep it instead and retry on reconnect.
-
-## Entries: signal → refetch (NOT direct read)
-
-The list **contents** (`shopping_entry`) sync as a *signal*, not by reading the
-collection directly. In `RealtimeShoppingList` (`src/routes/_authed/shopping.tsx`):
-
-1. `useLiveQuery` over `shoppingEntriesCollection` gives the synced rows.
-2. A signature string is derived from them; when it changes (a recipe/item added
-   or removed on **either** device), `['shopping']` is invalidated → the
-   **server** re-aggregates via `getShoppingList`.
-3. The displayed list still comes from the server snapshot; checks stay an overlay
-   read from the check collection.
-
-> **Do not** re-attempt reading/aggregating the list directly from the entry
-> collection on the client. That was tried and **regressed check optimism** (the
-> displayed checked state stopped coming purely from the optimistic check
-> collection, adding a ~1s lag). Route entries through the refetch signal.
-
-`getShoppingList` and the (pure) client aggregation share `aggregateShoppingEntries`
-in `src/lib/shopping-aggregate.ts`, but currently only the server calls it.
-
-## Setup / env
-
-An Electric Cloud "Postgres Sync" source is connected to Neon via OAuth (which
-enables logical replication). Credentials live in `.env`:
-
-- `ELECTRIC_SOURCE_ID`, `ELECTRIC_SOURCE_SECRET` (+ optional `ELECTRIC_URL`).
-- **Restart the dev server after changing them** — they're only read at boot.
-- New tables sync automatically (Electric Cloud adds them to its publication on
-  first shape request); `shopping_entry` needs a primary key for replication (it
-  has `id`).
-
-## Gotchas specific to realtime
-
-- **The proxy pins the shape server-side.** Each `/api/shapes/*` route injects
-  `table`, a household-scoped `where` (`scope_id = $1` / `user_id = $1` + the
-  household id), `columns`, and `source_id`/`secret`, and **blocks the client**
-  from setting any of those (`PROTECTED_PARAMS`). This scopes one household's data
-  and keeps the secret off the client. `columns` **must include the primary-key
-  columns** the collection's `getKey` uses (`item_key` for checks; `id` for
-  entries).
-- **The shape URL must be absolute.** Electric's `ShapeStream` does `new URL(url)`
-  with no base, so a relative `/api/shapes/...` throws in the browser and sync
-  silently never starts. `shopping-collection.ts` builds
-  `` `${window.location.origin}/api/shapes/...` `` with an SSR placeholder.
-- **`useLiveQuery` is not SSR-safe.** It starts syncing during render and would
-  fetch a relative URL on the server. `shopping.tsx` gates it behind `useMounted()`:
-  first paint renders from the server snapshot, then the live collections take over
-  on the client.
-- **Empty-collection flash:** a collection starts empty and fills on first sync.
-  For *checks* that's benign (absence = unchecked). That's exactly why entries use
-  signal→refetch instead of direct read — an empty entries collection would flash
-  an empty list before the snapshot.
-
-See the project memory note `electric-realtime-shopping-list` for additional
-historical context.
+- **Don't add a second source of truth for `checked`.** The previous design read
+  checks from a synced collection while the list came from the snapshot; when the
+  collection died, every item rendered unchecked even though the database was
+  fine. Keep checks on the snapshot.
+- **Keep the refetch before the op drop** in `useShoppingFlush` (see above).
+- **Polling cost is one small server-fn call per 4 s per open tab**, only while
+  visible and online. Tune `POLL_INTERVAL_MS` rather than adding cleverness.
+- **Staleness window is one interval.** Two people ticking the *same* item within
+  4 s can briefly disagree; the last write wins on the server and both converge
+  on the next poll.
+- The `['shopping']` query is wrapped in `withOfflineCache`, so the page still
+  opens with the last snapshot when there is no signal.

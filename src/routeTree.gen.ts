@@ -18,8 +18,6 @@ import { Route as AuthedIngredienserRouteImport } from './routes/_authed/ingredi
 import { Route as AuthedDelingRouteImport } from './routes/_authed/deling'
 import { Route as AuthedAdminRouteImport } from './routes/_authed/admin'
 import { Route as AuthedRecipesIndexRouteImport } from './routes/_authed/recipes/index'
-import { Route as ApiShapesShoppingEntriesRouteImport } from './routes/api/shapes/shopping-entries'
-import { Route as ApiShapesShoppingRouteImport } from './routes/api/shapes/shopping'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AuthedRecipesNewRouteImport } from './routes/_authed/recipes/new'
 import { Route as AuthedRecipesRecipeIdRouteImport } from './routes/_authed/recipes/$recipeId'
@@ -70,17 +68,6 @@ const AuthedRecipesIndexRoute = AuthedRecipesIndexRouteImport.update({
   path: '/recipes/',
   getParentRoute: () => AuthedRoute,
 } as any)
-const ApiShapesShoppingEntriesRoute =
-  ApiShapesShoppingEntriesRouteImport.update({
-    id: '/api/shapes/shopping-entries',
-    path: '/api/shapes/shopping-entries',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiShapesShoppingRoute = ApiShapesShoppingRouteImport.update({
-  id: '/api/shapes/shopping',
-  path: '/api/shapes/shopping',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -119,8 +106,6 @@ export interface FileRoutesByFullPath {
   '/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/recipes/new': typeof AuthedRecipesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/shapes/shopping': typeof ApiShapesShoppingRoute
-  '/api/shapes/shopping-entries': typeof ApiShapesShoppingEntriesRoute
   '/recipes/': typeof AuthedRecipesIndexRoute
   '/recipes/$recipeId/edit': typeof AuthedRecipesRecipeIdEditRoute
   '/api/recipes/$recipeId/image': typeof ApiRecipesRecipeIdImageRoute
@@ -136,8 +121,6 @@ export interface FileRoutesByTo {
   '/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/recipes/new': typeof AuthedRecipesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/shapes/shopping': typeof ApiShapesShoppingRoute
-  '/api/shapes/shopping-entries': typeof ApiShapesShoppingEntriesRoute
   '/recipes': typeof AuthedRecipesIndexRoute
   '/recipes/$recipeId/edit': typeof AuthedRecipesRecipeIdEditRoute
   '/api/recipes/$recipeId/image': typeof ApiRecipesRecipeIdImageRoute
@@ -155,8 +138,6 @@ export interface FileRoutesById {
   '/_authed/recipes/$recipeId': typeof AuthedRecipesRecipeIdRoute
   '/_authed/recipes/new': typeof AuthedRecipesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/api/shapes/shopping': typeof ApiShapesShoppingRoute
-  '/api/shapes/shopping-entries': typeof ApiShapesShoppingEntriesRoute
   '/_authed/recipes/': typeof AuthedRecipesIndexRoute
   '/_authed/recipes/$recipeId_/edit': typeof AuthedRecipesRecipeIdEditRoute
   '/api/recipes/$recipeId/image': typeof ApiRecipesRecipeIdImageRoute
@@ -174,8 +155,6 @@ export interface FileRouteTypes {
     | '/recipes/$recipeId'
     | '/recipes/new'
     | '/api/auth/$'
-    | '/api/shapes/shopping'
-    | '/api/shapes/shopping-entries'
     | '/recipes/'
     | '/recipes/$recipeId/edit'
     | '/api/recipes/$recipeId/image'
@@ -191,8 +170,6 @@ export interface FileRouteTypes {
     | '/recipes/$recipeId'
     | '/recipes/new'
     | '/api/auth/$'
-    | '/api/shapes/shopping'
-    | '/api/shapes/shopping-entries'
     | '/recipes'
     | '/recipes/$recipeId/edit'
     | '/api/recipes/$recipeId/image'
@@ -209,8 +186,6 @@ export interface FileRouteTypes {
     | '/_authed/recipes/$recipeId'
     | '/_authed/recipes/new'
     | '/api/auth/$'
-    | '/api/shapes/shopping'
-    | '/api/shapes/shopping-entries'
     | '/_authed/recipes/'
     | '/_authed/recipes/$recipeId_/edit'
     | '/api/recipes/$recipeId/image'
@@ -221,8 +196,6 @@ export interface RootRouteChildren {
   AuthedRoute: typeof AuthedRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
-  ApiShapesShoppingRoute: typeof ApiShapesShoppingRoute
-  ApiShapesShoppingEntriesRoute: typeof ApiShapesShoppingEntriesRoute
   ApiRecipesRecipeIdImageRoute: typeof ApiRecipesRecipeIdImageRoute
 }
 
@@ -290,20 +263,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/recipes/'
       preLoaderRoute: typeof AuthedRecipesIndexRouteImport
       parentRoute: typeof AuthedRoute
-    }
-    '/api/shapes/shopping-entries': {
-      id: '/api/shapes/shopping-entries'
-      path: '/api/shapes/shopping-entries'
-      fullPath: '/api/shapes/shopping-entries'
-      preLoaderRoute: typeof ApiShapesShoppingEntriesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/shapes/shopping': {
-      id: '/api/shapes/shopping'
-      path: '/api/shapes/shopping'
-      fullPath: '/api/shapes/shopping'
-      preLoaderRoute: typeof ApiShapesShoppingRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
       id: '/api/auth/$'
@@ -375,8 +334,6 @@ const rootRouteChildren: RootRouteChildren = {
   AuthedRoute: AuthedRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
-  ApiShapesShoppingRoute: ApiShapesShoppingRoute,
-  ApiShapesShoppingEntriesRoute: ApiShapesShoppingEntriesRoute,
   ApiRecipesRecipeIdImageRoute: ApiRecipesRecipeIdImageRoute,
 }
 export const routeTree = rootRouteImport

@@ -27,8 +27,8 @@ IndexedDB (`outbox` store) and replayed later:
   the previous one. Each op gets a monotonic `seq` (orders the queue and uniquely
   identifies an instance — a wall clock can collide at sub-ms speed).
 - **The outbox *is* the optimistic overlay.** `useOutbox()` derives
-  `pendingChecked` / `pendingOverride` maps; in `RealtimeShoppingList` a pending
-  value wins over the Electric-synced value. So a queued change keeps showing —
+  `pendingChecked` / `pendingQuantity`; in `SyncedShoppingList` a pending
+  value wins over the polled server snapshot. So a queued change keeps showing —
   instantly, and across a reload while offline (the outbox is persisted) — until it
   has actually synced.
 - `flushOutbox(execute)` replays ops oldest-first via the server fns. It stops at
@@ -61,6 +61,8 @@ IndexedDB (`outbox` store) and replayed later:
 - **IndexedDB is best-effort.** Every idb call is wrapped in try/catch and degrades
   to in-memory (so jsdom/SSR and private-mode quirks don't break the queue). jsdom
   has no IndexedDB, which is why `offline.test.ts` exercises the in-memory queue.
-- **The checks collection is read-only now.** Don't re-add `onInsert/onUpdate` to
-  `shoppingChecksCollection` — writes must stay on the outbox path or offline edits
-  will roll back again. See [realtime-shopping-list.md](realtime-shopping-list.md).
+- **Checks and quantities stay on the outbox path.** Don't turn them into plain
+  `useMutation`s with rollback — an offline edit would roll back again. The flush
+  refetches the `['shopping']` snapshot before dropping a pending op so the row
+  never flicks back to a stale value. See
+  [realtime-shopping-list.md](realtime-shopping-list.md).

@@ -2,7 +2,7 @@
 
 A small, private recipe + shopping-list app for a two-person household. Save or
 link recipes, add a recipe's ingredients to a shared shopping list, and tick
-items off in realtime across both members' devices. UI copy is **Norwegian
+items off from either member's phone (the list polls to stay in sync). UI copy is **Norwegian
 (bokmål)**; quantities are **metric**.
 
 ## Tech stack
@@ -12,7 +12,7 @@ items off in realtime across both members' devices. UI copy is **Norwegian
 | Framework       | [TanStack Start](https://tanstack.com/start) (React 19, Vite 7, Nitro) |
 | Routing / data  | TanStack Router (file-based) + server functions                        |
 | Server state    | TanStack Query (`@tanstack/react-query`)                               |
-| Realtime sync   | [Electric](https://electric-sql.com) Cloud + [TanStack DB](https://tanstack.com/db) (`@tanstack/react-db` + `@tanstack/electric-db-collection`) |
+| Cross-device sync | TanStack Query polling of the shopping snapshot (no sync engine; Electric Cloud was retired 2026-09) |
 | Database        | Postgres on [Neon](https://neon.tech), via `postgres.js`               |
 | ORM / migrations| [Drizzle ORM](https://orm.drizzle.team) + drizzle-kit (`snake_case`)   |
 | Auth            | [better-auth](https://better-auth.com) (email/password)                |
@@ -38,7 +38,8 @@ Typical request flow for an authed page:
    (server functions → Drizzle → Neon), so the first paint is populated.
 3. The component reads that data with `useSuspenseQuery`, and mutates via
    `useMutation` wrapping server functions (usually with optimistic updates).
-4. The shopping list's *checked* state additionally syncs live through Electric
+4. The shopping list additionally **polls** its snapshot every few seconds while
+   visible, with the offline outbox as optimistic overlay
    (see [realtime-shopping-list.md](./realtime-shopping-list.md)).
 
 ## Source map (`src/`)
@@ -57,14 +58,14 @@ src/
 │   ├── categories.ts          # canonical grocery categories, ordering, normalize (pure, client-safe)
 │   ├── image.ts               # client-side image resize before upload
 │   ├── queries.ts             # shared TanStack Query `queryOptions` (the query-key registry)
-│   ├── shopping-aggregate.ts  # pure shopping-list aggregation (shared by server + types)
-│   └── shopping-collection.ts # TanStack DB collections synced from Electric (checks + entries)
+│   ├── shopping-aggregate.ts  # pure shopping-list aggregation (server + types)
+│   └── offline.ts             # offline snapshot cache + durable mutation outbox (checks/quantities)
 ├── server/                    # server-only modules; every export is a server fn or createServerOnlyFn
 │   ├── auth.ts                # fetchSession, requireUser, requireAdmin
 │   ├── sharing.ts             # accessibleScope (household resolution) + invites
 │   ├── recipes.ts             # recipe CRUD / search / ratings / images
 │   ├── ingredients.ts         # ingredient catalog + categories
-│   ├── shopping.ts            # shopping-list read + mutations + realtime check fns
+│   ├── shopping.ts            # shopping-list read + mutations + check/quantity fns
 │   └── admin.ts               # admin-only catalog/category management
 ├── components/
 │   ├── RecipeForm.tsx         # shared create/edit form (+ JSON import)
@@ -77,8 +78,7 @@ src/
     ├── login.tsx              # sign in / sign up
     ├── api/
     │   ├── auth/$.ts          # better-auth request handler
-    │   ├── recipes/$recipeId/image.ts   # serves uploaded recipe images (bytea)
-    │   └── shapes/            # Electric auth proxies (shopping, shopping-entries)
+    │   └── recipes/$recipeId/image.ts   # serves uploaded recipe images (bytea)
     └── _authed/               # behind the login wall; renders pending-invite banner + nav
         ├── recipes/           # index (list), new, $recipeId (detail), $recipeId_.edit
         ├── shopping.tsx       # the shared shopping list
@@ -96,6 +96,6 @@ src/
 - **Data model / "what is X stored as"** → `src/db/schema.ts` and [data-model.md](./data-model.md).
 - **"How does the app talk to the DB"** → `src/server/*` and [patterns.md](./patterns.md).
 - **Query keys / cache** → `src/lib/queries.ts`.
-- **Realtime / Electric** → [realtime-shopping-list.md](./realtime-shopping-list.md).
+- **Cross-device sync (polling) / offline** → [realtime-shopping-list.md](./realtime-shopping-list.md), [offline-shopping-mode.md](./offline-shopping-mode.md).
 - **"Why did this break"** → [gotchas.md](./gotchas.md).
 - **Commands / env / deploy** → [dev-workflow.md](./dev-workflow.md).

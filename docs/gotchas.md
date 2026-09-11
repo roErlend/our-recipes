@@ -30,17 +30,18 @@ client build, even though TypeScript erases the alias. Write the `typeof db…`
 expression **inline in the server-only fn's parameter list** instead (see
 `src/server/ingredients.ts`) — inside the stripped function body it's harmless.
 
-## `useLiveQuery` is client-only
+## Shopping checks come from the snapshot only
 
-It calls `startSyncImmediate()` during render with no server snapshot, so it
-throws / fetches a relative URL under SSR. Always gate it behind a mount flag
-(`useMounted()` in `src/routes/_authed/shopping.tsx`). See
-[realtime-shopping-list.md](./realtime-shopping-list.md).
+The shopping page has exactly one source of truth for `checked`: the
+`['shopping']` snapshot, polled every few seconds, with the offline outbox as the
+optimistic overlay. Don't reintroduce a second, separately synced source for
+checks — when the old Electric collection died (Electric Cloud shut down
+2026-09-11) every item rendered unchecked while the database was fine. The flush
+in `useShoppingFlush` must refetch the snapshot **before** dropping a pending op.
+See [realtime-shopping-list.md](./realtime-shopping-list.md).
 
-## Electric shape URL must be absolute + proxy must pin columns
-
-Relative shape URLs silently fail; `columns` must include the collection's key
-column. Covered in [realtime-shopping-list.md](./realtime-shopping-list.md#gotchas-specific-to-realtime).
+The outbox overlay is client-only IndexedDB state, so it is gated behind
+`useMounted()` in `src/routes/_authed/shopping.tsx` to keep hydration clean.
 
 ## Dev-only recipe-image passthrough shim
 
@@ -61,7 +62,7 @@ routes). If dev behaves impossibly staleness-wise, suspect a leftover SW.
 
 ## Env vars are read at boot
 
-`DATABASE_URL`, `BETTER_AUTH_*`, and `ELECTRIC_*` are read at server start.
+`DATABASE_URL`, `BETTER_AUTH_*`, and `GMAIL_*` are read at server start.
 Changing `.env` requires a **dev-server restart**. `.env` is gitignored — never
 commit secrets.
 

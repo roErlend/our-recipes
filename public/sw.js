@@ -3,8 +3,8 @@
 //
 // Strategy:
 //   - API (/api/*) and non-GET requests: never touched -> always network.
-//     This is critical: better-auth and the Electric realtime long-poll
-//     (/api/shapes/shopping) must never be served from cache.
+//     This is critical: better-auth and the server-function calls (incl. the
+//     shopping list's polling) must never be served from cache.
 //   - Static assets (hashed js/css/img/fonts): cache-first (immutable).
 //   - Page navigations: network-first, falling back to the last cached copy
 //     (or a minimal offline page) so visited pages still open without signal.
@@ -40,7 +40,7 @@ self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
-  // Only same-origin GETs; never the API (auth + Electric realtime stream).
+  // Only same-origin GETs; never the API (auth + server functions).
   if (request.method !== 'GET') return
   if (url.origin !== self.location.origin) return
   if (url.pathname.startsWith('/api/')) return

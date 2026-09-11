@@ -78,11 +78,14 @@ Pattern (see `src/routes/_authed/recipes/index.tsx`):
   the local state. **No `useEffect`** is used for this (the maintainer dislikes
   unnecessary effects — prefer event handlers / derived values).
 
-## Realtime writes (TanStack DB collections)
+## Shopping checks / quantities (outbox, not mutations)
 
-Realtime collections (`src/lib/shopping-collection.ts`) persist through the same
-server fns and reconcile via the Postgres `txid`. See
-[realtime-shopping-list.md](./realtime-shopping-list.md) for the full contract.
+Check toggles and quantity edits on the shopping list do **not** use
+`useMutation`. They go through the durable offline outbox (`src/lib/offline.ts`),
+which is also their optimistic overlay, and the list polls the server snapshot to
+pick up the other device's changes. See
+[realtime-shopping-list.md](./realtime-shopping-list.md) and
+[offline-shopping-mode.md](./offline-shopping-mode.md).
 
 ## UI conventions
 
