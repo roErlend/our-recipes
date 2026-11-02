@@ -831,9 +831,11 @@ function AmountsDialog({
                     >
                       <Minus className="h-4 w-4" />
                     </button>
-                    <span className="min-w-[4.5rem] text-center text-sm font-medium tabular-nums text-stone-900">
-                      {fmtAmount(a)}
-                    </span>
+                    <DialogAmountField
+                      amount={a}
+                      label={`Antall ${item.name} (${a.unit ?? 'antall'})`}
+                      onCommit={(q) => onSetQuantity(item.key, unitKey, q)}
+                    />
                     <button
                       type="button"
                       onClick={() =>
@@ -876,5 +878,80 @@ function AmountsDialog({
         </Dialog>
       </Modal>
     </ModalOverlay>
+  )
+}
+
+/**
+ * One amount in {@link AmountsDialog}: shows the value, and tapping it swaps in
+ * a number input (same tap-to-type flow as the inline row editor). Enter or
+ * blur saves, Escape cancels; an empty or invalid entry leaves the amount
+ * as-is — reverting to the computed amounts is the dialog's «Tilbakestill».
+ */
+function DialogAmountField({
+  amount,
+  label,
+  onCommit,
+}: {
+  amount: { quantity: number; unit: string | null }
+  label: string
+  onCommit: (quantity: number) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  // Escape sets this so the blur that follows (input unmount) skips the save.
+  const skipCommit = useRef(false)
+
+  const commit = () => {
+    setEditing(false)
+    if (skipCommit.current) {
+      skipCommit.current = false
+      return
+    }
+    const n = Number(draft.trim().replace(',', '.'))
+    if (draft.trim() === '' || !Number.isFinite(n) || n <= 0) return
+    if (n !== amount.quantity) onCommit(+n.toFixed(2))
+  }
+
+  if (editing) {
+    return (
+      <span className="flex min-w-[4.5rem] items-center justify-center gap-1">
+        <input
+          autoFocus
+          inputMode="decimal"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              e.currentTarget.blur()
+            } else if (e.key === 'Escape') {
+              // Keep Escape from also closing the dialog.
+              e.stopPropagation()
+              skipCommit.current = true
+              e.currentTarget.blur()
+            }
+          }}
+          aria-label={label}
+          className="w-14 rounded border border-stone-300 px-1.5 py-0.5 text-right text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+        />
+        {amount.unit && <span className="text-sm text-stone-500">{amount.unit}</span>}
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setDraft(String(+amount.quantity.toFixed(2)).replace('.', ','))
+        setEditing(true)
+      }}
+      aria-label={label}
+      className="min-w-[4.5rem] rounded px-1 py-0.5 text-center text-sm font-medium tabular-nums text-stone-900 transition-colors hover:bg-stone-100"
+    >
+      {fmtAmount(amount)}
+    </button>
   )
 }
