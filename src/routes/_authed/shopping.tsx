@@ -103,13 +103,14 @@ function fmtAmount(a: { quantity: number; unit: string | null }) {
   return `${+a.quantity.toFixed(2)}${a.unit ? ` ${a.unit}` : ''}`
 }
 
+// "+ mer" flags an unquantified contribution on the *computed* amounts; a
+// manual override is an explicit statement, so it suppresses the hint.
+const showsMore = (item: ShoppingItem) =>
+  !hasOverrides(item) && item.hasUnquantified && item.amounts.length > 0
+
 function formatAmount(item: ShoppingItem) {
   const parts = effectiveAmounts(item).map(fmtAmount)
-  // "+ mer" flags an unquantified contribution on the *computed* amounts; a
-  // manual override is an explicit statement, so it suppresses the hint.
-  if (!hasOverrides(item) && item.hasUnquantified && parts.length) {
-    parts.push('mer')
-  }
+  if (showsMore(item)) parts.push('mer')
   return parts.join(' + ')
 }
 
@@ -588,11 +589,12 @@ function ShoppingRow({
   // Escape sets this so the blur that follows (input unmount) skips the save.
   const skipCommit = useRef(false)
 
-  // A line aggregating several units («2 stk + 200 g») can't be edited with
-  // one number — tapping its amount opens a dialog with a stepper per unit.
-  // Single-unit lines keep the inline ± / tap-to-type flow.
+  // A line aggregating several amounts («2 stk + 200 g», «0,5 ts + mer») can't
+  // be edited with one number — tapping its amount opens a dialog with a
+  // stepper per unit and the unquantified note. Plain single-unit lines keep
+  // the inline ± / tap-to-type flow.
   const effective = effectiveAmounts(item)
-  const multi = effective.length > 1
+  const multi = effective.length > 1 || showsMore(item)
   const target = effective[0] ?? { quantity: null, unit: null }
   const targetUnitKey = unitKeyOf(target.unit)
 
@@ -742,7 +744,9 @@ function ShoppingRow({
           )}
         </div>
       )}
-      {multi && (
+      {/* Stay mounted while open: stepping a «0,5 ts + mer» line writes an
+          override, which drops the "+ mer" and with it `multi`. */}
+      {(multi || dialogOpen) && (
         <AmountsDialog
           isOpen={dialogOpen}
           onOpenChange={setDialogOpen}
@@ -798,7 +802,9 @@ function AmountsDialog({
             {item.name}
           </Heading>
           <p className="mt-1 text-sm text-stone-500">
-            Varen står med flere enheter — juster hver for seg.
+            {amounts.length > 1
+              ? 'Varen står med flere enheter — juster hver for seg.'
+              : 'Varen står med flere mengder — juster den som har tall.'}
           </p>
 
           <ul className="mt-3 flex flex-col divide-y divide-stone-100">
